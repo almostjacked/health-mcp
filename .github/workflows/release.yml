@@ -37,6 +37,11 @@ jobs:
       # apps/mcp imports the core's built dist/, so build core before the test gate.
       - run: pnpm -C packages/core build
 
+      # apps/mcp's `prepack` (run automatically by `npm publish` below) copies
+      # these bundles into its own dist/functions/ for the setup wizard to ship —
+      # they must exist in the repo-root dist/ before that publish step runs.
+      - run: pnpm bundle:functions
+
       # Gate every release on a full test suite.
       - run: pnpm -r test
 

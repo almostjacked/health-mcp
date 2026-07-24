@@ -30,3 +30,24 @@ jobs:
 
       - run: pnpm -r typecheck
       - run: pnpm -r test
+
+      # Exercises the setup wizard's function-bundling pipeline end to end:
+      # bundle:functions -> apps/mcp build (tsc + copy-functions.mjs) -> the
+      # bundles land in apps/mcp/dist/functions, and `setup` still reaches a
+      # helpful preflight message with no Supabase CLI session.
+      - run: pnpm bundle:functions
+      - run: pnpm -C apps/mcp build
+      - run: test -f apps/mcp/dist/functions/health-mcp.ts
+      - run: test -f apps/mcp/dist/functions/health-ingest.ts
+      - name: setup wizard dry probe (no Supabase CLI session)
+        run: |
+          set +e
+          mkdir -p /tmp/fake-home
+          SUPABASE_ACCESS_TOKEN='' HOME=/tmp/fake-home node apps/mcp/dist/main.js setup < /dev/null > /tmp/setup-dry.out 2>&1
+          status=$?
+          cat /tmp/setup-dry.out
+          if [ "$status" -eq 0 ]; then
+            echo "expected the dry probe to exit non-zero (no login session available)"
+            exit 1
+          fi
+          grep -q "checking for the Supabase CLI" /tmp/setup-dry.out || { echo "missing preflight message"; exit 1; }

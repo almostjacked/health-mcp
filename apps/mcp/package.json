@@ -10,8 +10,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "node scripts/sync-versions.mjs && tsc -p tsconfig.json",
-    "prepack": "node scripts/sync-versions.mjs && tsc -p tsconfig.json",
+    "build": "node scripts/sync-versions.mjs && tsc -p tsconfig.json && node scripts/copy-functions.mjs",
+    "prepack": "node scripts/sync-versions.mjs && tsc -p tsconfig.json && node scripts/copy-functions.mjs",
     "start": "node dist/main.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
