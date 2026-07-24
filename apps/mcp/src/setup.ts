@@ -474,6 +474,7 @@ export async function main(): Promise<void> {
             "  Manual fallback: wait for the project to finish provisioning in the dashboard, then re-run\n" +
             '  `npx @almostjacked/health-mcp setup` and choose "use existing".',
         );
+			process.exitCode = 1;
         return;
       }
       console.log("  project is ready.");
