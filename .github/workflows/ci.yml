@@ -24,5 +24,9 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # apps/mcp imports the core's built dist/, so build core before typecheck/test.
+      - run: pnpm -C packages/core build
+
       - run: pnpm -r typecheck
       - run: pnpm -r test

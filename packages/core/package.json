@@ -1,0 +1,42 @@
+{
+  "name": "@almostjacked/health-mcp-core",
+  "version": "0.1.0",
+  "description": "Core for health-mcp: data tools over a user-owned Supabase health database (zero custody).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "setup.sql"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@almostjacked/fitness-tools": "^0.4.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "AJ Wallace <ajwallacemusic@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/almostjacked/health-mcp.git",
+    "directory": "packages/core"
+  },
+  "mcpName": "io.github.almostjacked/health-mcp"
+}

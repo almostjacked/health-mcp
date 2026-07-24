@@ -34,6 +34,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # apps/mcp imports the core's built dist/, so build core before the test gate.
+      - run: pnpm -C packages/core build
+
       # Gate every release on a full test suite.
       - run: pnpm -r test
 
