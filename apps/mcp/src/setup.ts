@@ -90,6 +90,30 @@ export function parseProjectList(raw: string): ProjectSummary[] {
   }
 }
 
+/**
+ * True iff `ref`'s entry in `supabase projects list --output-format json` output reports a
+ * healthy/active status (`ACTIVE_HEALTHY`). Accepts either the raw JSON string (as returned by
+ * `runSupabase(...).stdout`) or an already-parsed value; tolerant of malformed/unexpected input —
+ * a missing ref, a non-ready status (e.g. `COMING_UP`), or invalid JSON all resolve to `false`.
+ */
+export function isProjectReady(listJson: unknown, ref: string): boolean {
+  try {
+    const data: unknown = typeof listJson === "string" ? JSON.parse(listJson) : listJson;
+    if (!Array.isArray(data)) return false;
+    for (const entry of data) {
+      const r =
+        (entry as { ref?: unknown; id?: unknown } | undefined)?.ref ??
+        (entry as { id?: unknown } | undefined)?.id;
+      if (r !== ref) continue;
+      const status = (entry as { status?: unknown } | undefined)?.status;
+      return typeof status === "string" && status.toUpperCase() === "ACTIVE_HEALTHY";
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export interface OrgSummary {
   id: string;
   name: string;
@@ -168,6 +192,8 @@ async function ask(rl: ReturnType<typeof createInterface>, question: string, def
 interface ChosenProject {
   ref: string;
   dbPassword?: string;
+  /** True only when this project was just created by this run (vs. an existing one the user picked). */
+  isNew: boolean;
 }
 
 async function chooseProject(
@@ -182,7 +208,7 @@ async function chooseProject(
     if (projects.length === 0) {
       console.log("  (could not list existing projects)");
       const ref = await ask(rl, "  Paste the project ref (from your dashboard project URL)");
-      return ref ? { ref } : null;
+      return ref ? { ref, isNew: false } : null;
     }
     console.log("  Your projects:");
     for (const [i, p] of projects.entries()) {
@@ -191,7 +217,7 @@ async function chooseProject(
     const picked = await ask(rl, `  Pick a number (1-${projects.length}), or paste a ref directly`, "1");
     const idx = Number(picked);
     const ref = Number.isInteger(idx) && idx >= 1 && idx <= projects.length ? projects[idx - 1].ref : picked;
-    return ref ? { ref } : null;
+    return ref ? { ref, isNew: false } : null;
   }
 
   const name = await ask(rl, "  Project name", "health-mcp");
@@ -243,7 +269,38 @@ async function chooseProject(
     return null;
   }
   console.log(`  Project created: ${ref}`);
-  return { ref, dbPassword };
+  return { ref, dbPassword, isNew: true };
+}
+
+// ---------------------------------------------------------------------------
+// Post-create provisioning wait (create-new-project path only)
+// ---------------------------------------------------------------------------
+
+const PROVISION_POLL_INTERVAL_MS = 10_000;
+const PROVISION_TIMEOUT_MS = 5 * 60_000;
+
+/** `await`-able sleep used by the provisioning poll loop. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Polls `supabase projects list --output-format json` every 10s (up to 5 minutes) until the
+ * newly-created project's ref reports a healthy/active status. Fresh Supabase projects take
+ * 1-3 minutes to provision — without this wait, the immediately-following `link` / `db query` /
+ * `functions deploy` calls would reliably fail into their manual fallbacks on the happy path.
+ * Returns `false` on timeout (caller decides what to do — never throws).
+ */
+async function waitForProjectProvisioning(ref: string): Promise<boolean> {
+  const start = Date.now();
+  for (;;) {
+    const elapsedS = Math.round((Date.now() - start) / 1000);
+    console.log(`  waiting for project provisioning... (${elapsedS}s)`);
+    const list = runSupabase(["projects", "list", "--output-format", "json"]);
+    if (list.ok && isProjectReady(list.stdout, ref)) return true;
+    if (Date.now() - start >= PROVISION_TIMEOUT_MS) return false;
+    await sleep(PROVISION_POLL_INTERVAL_MS);
+  }
 }
 
 function printSchemaFallback(ref: string, sqlPath: string, reason: string): void {
@@ -406,7 +463,21 @@ export async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    const { ref, dbPassword } = project;
+    const { ref, dbPassword, isNew } = project;
+
+    if (isNew) {
+      console.log("\nNew project created — waiting for it to finish provisioning (can take 1-3 minutes)...");
+      const ready = await waitForProjectProvisioning(ref);
+      if (!ready) {
+        console.error(
+          "\n  Timed out after 5 minutes waiting for the new project to finish provisioning.\n" +
+            "  Manual fallback: wait for the project to finish provisioning in the dashboard, then re-run\n" +
+            '  `npx @almostjacked/health-mcp setup` and choose "use existing".',
+        );
+        return;
+      }
+      console.log("  project is ready.");
+    }
 
     let sqlPath: string;
     try {

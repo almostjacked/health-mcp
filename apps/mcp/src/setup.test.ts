@@ -8,6 +8,7 @@ import {
   parseProjectRef,
   parseProjectList,
   parseOrgList,
+  isProjectReady,
 } from "./setup.js";
 
 describe("setup helpers", () => {
@@ -57,5 +58,30 @@ describe("setup helpers", () => {
   it("parseOrgList tolerates malformed input and maps known fields", () => {
     expect(parseOrgList("not json")).toEqual([]);
     expect(parseOrgList('[{"id":"org1","name":"Acme"}]')).toEqual([{ id: "org1", name: "Acme" }]);
+  });
+
+  describe("isProjectReady", () => {
+    it("returns true when the ref's status is ACTIVE_HEALTHY", () => {
+      expect(isProjectReady('[{"ref":"abcref","status":"ACTIVE_HEALTHY"}]', "abcref")).toBe(true);
+    });
+
+    it("returns false when the ref's status is still COMING_UP", () => {
+      expect(isProjectReady('[{"ref":"abcref","status":"COMING_UP"}]', "abcref")).toBe(false);
+    });
+
+    it("returns false when the ref is missing from the list", () => {
+      expect(isProjectReady('[{"ref":"other","status":"ACTIVE_HEALTHY"}]', "abcref")).toBe(false);
+      expect(isProjectReady("[]", "abcref")).toBe(false);
+    });
+
+    it("returns false on malformed JSON", () => {
+      expect(isProjectReady("not json", "abcref")).toBe(false);
+      expect(isProjectReady("{}", "abcref")).toBe(false);
+    });
+
+    it("also accepts an already-parsed value (not just a raw string)", () => {
+      expect(isProjectReady([{ ref: "abcref", status: "ACTIVE_HEALTHY" }], "abcref")).toBe(true);
+      expect(isProjectReady([{ id: "abcref", status: "ACTIVE_HEALTHY" }], "abcref")).toBe(true);
+    });
   });
 });
