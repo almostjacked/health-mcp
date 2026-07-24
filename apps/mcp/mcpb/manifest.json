@@ -1,0 +1,48 @@
+{
+  "manifest_version": "0.2",
+  "name": "health-mcp",
+  "display_name": "Health Data (your own Supabase)",
+  "version": "0.1.0",
+  "description": "Query your weight, macros, and weigh-in history from chat. Your data lives in your own Supabase project — this connector never holds a copy.",
+  "author": {
+    "name": "AJ Wallace",
+    "email": "ajwallacemusic@gmail.com",
+    "url": "https://github.com/ajwallacemusic"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/almostjacked/health-mcp",
+  "icon": "icon.png",
+  "privacy_policies": [
+    "https://github.com/almostjacked/health-mcp#privacy-policy"
+  ],
+  "user_config": {
+    "supabase_url": {
+      "type": "string",
+      "title": "Supabase project URL",
+      "description": "Your Supabase project URL, e.g. https://xxxx.supabase.co",
+      "sensitive": false,
+      "required": true
+    },
+    "supabase_secret_key": {
+      "type": "string",
+      "title": "Supabase secret API key",
+      "description": "The secret (service_role or secret) API key for your project. Stored locally by Claude Desktop; sent only to your own Supabase project.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "SUPABASE_URL": "${user_config.supabase_url}",
+        "SUPABASE_SECRET_KEY": "${user_config.supabase_secret_key}"
+      }
+    }
+  }
+}

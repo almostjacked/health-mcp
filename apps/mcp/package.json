@@ -1,0 +1,42 @@
+{
+  "name": "@almostjacked/health-mcp",
+  "version": "0.1.0",
+  "description": "Your health data (weight, macros, weigh-ins) as MCP tools — in your own Supabase, zero custody.",
+  "type": "module",
+  "bin": {
+    "health-mcp": "dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/sync-versions.mjs && tsc -p tsconfig.json",
+    "prepack": "node scripts/sync-versions.mjs && tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:mcpb": "node scripts/sync-versions.mjs && esbuild src/main.ts --bundle --platform=node --format=esm --outfile=mcpb/server/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && mcpb pack mcpb health-mcp.mcpb"
+  },
+  "dependencies": {
+    "@almostjacked/health-mcp-core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "AJ Wallace <ajwallacemusic@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/almostjacked/health-mcp.git",
+    "directory": "apps/mcp"
+  },
+  "mcpName": "io.github.almostjacked/health-mcp"
+}

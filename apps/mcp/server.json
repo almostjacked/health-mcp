@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.almostjacked/health-mcp",
+  "title": "Health Data (your own Supabase)",
+  "description": "Your health data (weight, macros, weigh-ins) as MCP tools — in your own Supabase, zero custody.",
+  "repository": {
+    "url": "https://github.com/almostjacked/health-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@almostjacked/health-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SUPABASE_URL",
+          "description": "Your Supabase project URL",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "SUPABASE_SECRET_KEY",
+          "description": "A secret API key for your project",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
