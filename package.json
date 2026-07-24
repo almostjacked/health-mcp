@@ -1,0 +1,14 @@
+{
+  "name": "health-mcp",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "release": "changeset publish || node scripts/verify-published.mjs",
+    "version-packages": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
+  },
+  "engines": { "node": ">=18" }
+}

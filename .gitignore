@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.wrangler/
+*.mcpb
+mcpb/server/
+.superpowers/
+docs/superpowers/
+.DS_Store

@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: release-${{ github.ref }}
+
+permissions:
+  contents: write # push the version commit + git tags
+  pull-requests: write # open/update the "Version Packages" PR
+  id-token: write # OIDC: npm Trusted Publishing + provenance (no token needed)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # reads packageManager (pnpm) from package.json
+
+      # No registry-url/token: pnpm publishes via npm Trusted Publishing (OIDC),
+      # exchanging the id-token for a short-lived credential at publish time.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # npm Trusted Publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.x.
+      # `pnpm publish` shells out to the npm CLI for the registry upload, so the
+      # runner's global npm must be new enough to perform the OIDC token exchange.
+      # Without this, publish fails with a misleading ENEEDAUTH (npm/cli#9088).
+      - run: npm install --global npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      # Gate every release on a full test suite.
+      - run: pnpm -r test
+
+      # With changesets present → opens/updates a "Version Packages" PR.
+      # With none present (i.e. the version PR was merged) → publishes to npm.
+      - name: Version or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+          commit: "chore: version packages"
+          title: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
