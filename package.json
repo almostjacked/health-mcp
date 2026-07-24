@@ -2,13 +2,26 @@
   "name": "health-mcp",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "release": "changeset publish || node scripts/verify-published.mjs",
-    "version-packages": "changeset version"
+    "version-packages": "changeset version",
+    "bundle:functions": "node scripts/bundle-functions.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0"
+    "@changesets/cli": "^2.31.0",
+    "@hono/mcp": "^0.3.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
+    "hono": "^4.12.31",
+    "typescript": "^5.5.0",
+    "zod": "^4.4.3"
   },
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=18" },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
 }
