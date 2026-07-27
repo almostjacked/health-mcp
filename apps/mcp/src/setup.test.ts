@@ -9,6 +9,7 @@ import {
   parseProjectList,
   parseOrgList,
   isProjectReady,
+  parseSetupFlags,
 } from "./setup.js";
 
 describe("setup helpers", () => {
@@ -101,5 +102,18 @@ describe("real CLI output shape (wrapped object)", () => {
 	it("isProjectReady handles the wrapper", () => {
 		expect(isProjectReady(wrapped, "abc123")).toBe(true);
 		expect(isProjectReady(wrapped, "zzz999")).toBe(false);
+	});
+});
+
+describe("parseSetupFlags", () => {
+	it("parses new-project flags", () => {
+		expect(parseSetupFlags(["--new", "--name", "e2e", "--org-index", "2"]))
+			.toEqual({ mode: "new", name: "e2e", orgIndex: 2 });
+	});
+	it("parses existing-ref flags", () => {
+		expect(parseSetupFlags(["--existing", "abc123"])).toEqual({ mode: "existing", ref: "abc123" });
+	});
+	it("empty argv -> empty flags", () => {
+		expect(parseSetupFlags([])).toEqual({});
 	});
 });

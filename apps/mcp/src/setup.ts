@@ -191,9 +191,32 @@ function summarize(result: CliResult): string {
   return raw || `exit code ${result.status ?? "unknown"}`;
 }
 
+export interface SetupFlags {
+  mode?: "new" | "existing";
+  name?: string;
+  ref?: string;
+  orgIndex?: number;
+}
+
+/** Parse non-interactive flags: --new | --existing <ref> | --name <n> | --org-index <i>. */
+export function parseSetupFlags(argv: string[]): SetupFlags {
+  const f: SetupFlags = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--new") f.mode = "new";
+    else if (a === "--existing") { f.mode = "existing"; f.ref = argv[++i]; }
+    else if (a === "--name") f.name = argv[++i];
+    else if (a === "--org-index") f.orgIndex = Number(argv[++i]);
+  }
+  return f;
+}
+
 async function ask(rl: ReturnType<typeof createInterface>, question: string, def?: string): Promise<string> {
   const suffix = def ? ` [${def}]` : "";
-  const answer = (await rl.question(`${question}${suffix}: `)).trim();
+  const closed = new Promise<never>((_, reject) =>
+    rl.once("close", () => reject(new Error("stdin closed before all answers were provided — for non-interactive use pass --new --name <name> [--org-index N] or --existing <ref>"))),
+  );
+  const answer = (await Promise.race([rl.question(`${question}${suffix}: `), closed])).trim();
   return answer.length > 0 ? answer : (def ?? "");
 }
 
@@ -207,9 +230,13 @@ interface ChosenProject {
 async function chooseProject(
   rl: ReturnType<typeof createInterface>,
   initialList: CliResult,
+  flags: SetupFlags = {},
 ): Promise<ChosenProject | null> {
   console.log("\nStep 3/6: choose a Supabase project");
-  const mode = (await ask(rl, "Create a [n]ew project or use an [e]xisting one? (n/e)", "n")).toLowerCase();
+  if (flags.mode === "existing" && flags.ref) return { ref: flags.ref, isNew: false };
+  const mode = flags.mode === "new"
+    ? "n"
+    : (await ask(rl, "Create a [n]ew project or use an [e]xisting one? (n/e)", "n")).toLowerCase();
 
   if (mode.startsWith("e")) {
     const projects = parseProjectList(initialList.stdout);
@@ -228,7 +255,7 @@ async function chooseProject(
     return ref ? { ref, isNew: false } : null;
   }
 
-  const name = await ask(rl, "  Project name", "health-mcp");
+  const name = flags.name ?? (await ask(rl, "  Project name", "health-mcp"));
 
   const orgsResult = runSupabase(["orgs", "list", "--output-format", "json"]);
   const orgs = parseOrgList(orgsResult.stdout);
@@ -239,7 +266,7 @@ async function chooseProject(
   } else if (orgs.length > 1) {
     console.log("  Your organizations:");
     for (const [i, o] of orgs.entries()) console.log(`    ${i + 1}. ${o.name}  (${o.id})`);
-    const picked = await ask(rl, `  Pick a number (1-${orgs.length})`, "1");
+    const picked = flags.orgIndex != null ? String(flags.orgIndex) : await ask(rl, `  Pick a number (1-${orgs.length})`, "1");
     const idx = Number(picked);
     orgId = orgs[Number.isInteger(idx) && idx >= 1 && idx <= orgs.length ? idx - 1 : 0].id;
   } else {
@@ -462,7 +489,7 @@ export async function main(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "health-mcp-setup-"));
   try {
-    const project = await chooseProject(rl, probe);
+    const project = await chooseProject(rl, probe, parseSetupFlags(process.argv.slice(3)));
     if (!project) {
       console.error(
         "  No project selected — aborting. Manual fallback: create a project at\n" +
