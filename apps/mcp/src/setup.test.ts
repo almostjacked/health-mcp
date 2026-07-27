@@ -117,3 +117,10 @@ describe("parseSetupFlags", () => {
 		expect(parseSetupFlags([])).toEqual({});
 	});
 });
+
+describe("parseOrgList real CLI shape", () => {
+	it("handles the {organizations: []} wrapper", () => {
+		const raw = JSON.stringify({ organizations: [{ id: "o1", slug: "o1", name: "acme" }], message: "" });
+		expect(parseOrgList(raw)).toEqual([{ id: "o1", name: "acme" }]);
+	});
+});

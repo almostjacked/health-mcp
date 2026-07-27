@@ -130,7 +130,11 @@ export interface OrgSummary {
 /** Reads `supabase orgs list --output-format json` output; tolerant of malformed input. */
 export function parseOrgList(raw: string): OrgSummary[] {
   try {
-    const data: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    // Same wrapper pattern as projects list: {organizations: [...]} (observed v2.110).
+    const data = Array.isArray(parsed)
+      ? parsed
+      : ((parsed as { organizations?: unknown } | null | undefined)?.organizations as unknown[] | undefined) ?? [];
     if (!Array.isArray(data)) return [];
     return data
       .map((o) => {
@@ -489,7 +493,14 @@ export async function main(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "health-mcp-setup-"));
   try {
-    const project = await chooseProject(rl, probe, parseSetupFlags(process.argv.slice(3)));
+    let project: ChosenProject | null;
+    try {
+      project = await chooseProject(rl, probe, parseSetupFlags(process.argv.slice(3)));
+    } catch (e) {
+      console.error(`\n  ${e instanceof Error ? e.message : String(e)}`);
+      process.exitCode = 1;
+      return;
+    }
     if (!project) {
       console.error(
         "  No project selected — aborting. Manual fallback: create a project at\n" +
