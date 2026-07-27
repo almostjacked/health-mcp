@@ -85,3 +85,21 @@ describe("setup helpers", () => {
     });
   });
 });
+
+describe("real CLI output shape (wrapped object)", () => {
+	const wrapped = JSON.stringify({
+		projects: [
+			{ id: "abc123", ref: "abc123", name: "health-mcp-e2e", region: "us-west-2", status: "ACTIVE_HEALTHY" },
+			{ id: "zzz999", ref: "zzz999", name: "other", region: "us-east-1", status: "COMING_UP" },
+		],
+		message: "",
+	});
+	it("parseProjectList handles the {projects: []} wrapper", () => {
+		const list = parseProjectList(wrapped);
+		expect(list.map((p) => p.ref)).toEqual(["abc123", "zzz999"]);
+	});
+	it("isProjectReady handles the wrapper", () => {
+		expect(isProjectReady(wrapped, "abc123")).toBe(true);
+		expect(isProjectReady(wrapped, "zzz999")).toBe(false);
+	});
+});

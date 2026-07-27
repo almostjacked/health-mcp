@@ -68,10 +68,18 @@ export interface ProjectSummary {
 }
 
 /** Reads `supabase projects list --output-format json` output; tolerant of malformed input. */
+/** The CLI wraps list output as {projects: [...]} (observed v2.109+); older docs show a bare
+ * array. Accept both. */
+export function coerceProjectArray(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  const inner = (data as { projects?: unknown } | null | undefined)?.projects;
+  return Array.isArray(inner) ? inner : [];
+}
+
 export function parseProjectList(raw: string): ProjectSummary[] {
   try {
-    const data: unknown = JSON.parse(raw);
-    if (!Array.isArray(data)) return [];
+    const data = coerceProjectArray(JSON.parse(raw));
+    if (data.length === 0) return [];
     return data
       .map((p): ProjectSummary | null => {
         const ref = (p as { ref?: unknown; id?: unknown }).ref ?? (p as { id?: unknown }).id;
@@ -98,8 +106,8 @@ export function parseProjectList(raw: string): ProjectSummary[] {
  */
 export function isProjectReady(listJson: unknown, ref: string): boolean {
   try {
-    const data: unknown = typeof listJson === "string" ? JSON.parse(listJson) : listJson;
-    if (!Array.isArray(data)) return false;
+    const parsed: unknown = typeof listJson === "string" ? JSON.parse(listJson) : listJson;
+    const data = coerceProjectArray(parsed);
     for (const entry of data) {
       const r =
         (entry as { ref?: unknown; id?: unknown } | undefined)?.ref ??
