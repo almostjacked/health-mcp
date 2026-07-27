@@ -200,6 +200,7 @@ export interface SetupFlags {
   name?: string;
   ref?: string;
   orgIndex?: number;
+  region?: string;
 }
 
 /** Parse non-interactive flags: --new | --existing <ref> | --name <n> | --org-index <i>. */
@@ -211,6 +212,7 @@ export function parseSetupFlags(argv: string[]): SetupFlags {
     else if (a === "--existing") { f.mode = "existing"; f.ref = argv[++i]; }
     else if (a === "--name") f.name = argv[++i];
     else if (a === "--org-index") f.orgIndex = Number(argv[++i]);
+    else if (a === "--region") f.region = argv[++i];
   }
   return f;
 }
@@ -278,14 +280,18 @@ async function chooseProject(
   }
   if (!orgId) return null;
 
+  const region = flags.region ??
+    (await ask(rl, "  Region (e.g. us-east-1, us-west-2, eu-central-1)", "us-east-1"));
   const dbPassword = randomToken();
-  console.log(`  Creating project "${name}" ...`);
+  console.log(`  Creating project "${name}" in ${region} ...`);
   const created = runSupabase([
     "projects",
     "create",
     name,
     "--org-id",
     orgId,
+    "--region",
+    region,
     "--db-password",
     dbPassword,
     "--output-format",

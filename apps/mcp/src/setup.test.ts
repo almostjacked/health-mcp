@@ -107,8 +107,8 @@ describe("real CLI output shape (wrapped object)", () => {
 
 describe("parseSetupFlags", () => {
 	it("parses new-project flags", () => {
-		expect(parseSetupFlags(["--new", "--name", "e2e", "--org-index", "2"]))
-			.toEqual({ mode: "new", name: "e2e", orgIndex: 2 });
+		expect(parseSetupFlags(["--new", "--name", "e2e", "--org-index", "2", "--region", "us-west-2"]))
+			.toEqual({ mode: "new", name: "e2e", orgIndex: 2, region: "us-west-2" });
 	});
 	it("parses existing-ref flags", () => {
 		expect(parseSetupFlags(["--existing", "abc123"])).toEqual({ mode: "existing", ref: "abc123" });
