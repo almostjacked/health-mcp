@@ -30,6 +30,9 @@ what" (TDEE, macros, body fat, 1RM). The `get_energy_inputs` tool returns
 `adaptive-tdee` — no reformatting needed. Ask Claude:
 
 > Get my energy inputs for the last 90 days, then compute my adaptive TDEE
+
+> `adaptive-tdee` needs at least 10 days that have BOTH a weigh-in and a calorie total — expect ~2 weeks of syncing before the pairing works.
+
 > with fitness-tools.
 
 If you also train with Hevy, pair with

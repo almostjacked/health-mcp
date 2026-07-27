@@ -62,7 +62,7 @@ resolve, just paste and deploy.)
 2. Add two secrets:
    - `MCP_TOKEN` — any long random string (this becomes part of your
      connector URL, so treat it like a password — e.g. generate one with
-     `openssl rand -base64 32` or a password manager).
+     `openssl rand -hex 32` or a password manager).
    - `INGEST_KEY` — another long random string (sent as the `X-Api-Key`
      header by the Shortcut).
 3. Save. Both Edge Functions read these at request time, so no redeploy is

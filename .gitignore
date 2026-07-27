@@ -7,3 +7,5 @@ mcpb/server/
 .superpowers/
 docs/superpowers/
 .DS_Store
+supabase/.temp/
+*.tgz
