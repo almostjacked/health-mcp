@@ -561,7 +561,7 @@ export async function main(): Promise<void> {
       console.error(
         `  Could not set secrets automatically (${summarize(secrets)}).\n` +
           "  Manual fallback: in the dashboard, go to Edge Functions -> Secrets and add MCP_TOKEN and\n" +
-          "  INGEST_KEY using the values embedded in the connector URL below below.",
+          "  INGEST_KEY using the values embedded in the connector URL below.",
       );
     } else {
       console.log("  secrets set.");
