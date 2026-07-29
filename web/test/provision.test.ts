@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MgmtClient } from "../src/provision/api.js";
-import { provisionAll, isProjectReady, randomToken } from "../src/provision/steps.js";
+import { provisionAll, isProjectReady, randomToken, connectorUrl, ingestUrl, mergeProvisionResult } from "../src/provision/steps.js";
 import type { ProvisionStep, ProvisionOptions } from "../src/provision/steps.js";
 
 const PROVISION_POLL_INTERVAL_MS = 10_000;
@@ -128,6 +128,50 @@ describe("randomToken", () => {
 
 	it("is not constant across calls", () => {
 		expect(randomToken()).not.toBe(randomToken());
+	});
+});
+
+describe("connectorUrl / ingestUrl", () => {
+	it("connectorUrl embeds the ref as the subdomain and the mcpToken as the trailing path segment", () => {
+		expect(connectorUrl("abcxyz", "tok123")).toBe("https://abcxyz.supabase.co/functions/v1/health-mcp/tok123");
+	});
+
+	it("ingestUrl embeds only the ref (the key travels as a header, not in the URL)", () => {
+		expect(ingestUrl("abcxyz")).toBe("https://abcxyz.supabase.co/functions/v1/health-ingest");
+	});
+});
+
+describe("mergeProvisionResult", () => {
+	it("a fresh provision (new secrets minted) derives connectorUrl/ingestUrl from the new ref+mcpToken", () => {
+		const merged = mergeProvisionResult({}, { ref: "abcxyz", mcpToken: "tok1", ingestKey: "key1" });
+		expect(merged).toEqual({
+			ref: "abcxyz",
+			mcpToken: "tok1",
+			ingestKey: "key1",
+			connectorUrl: "https://abcxyz.supabase.co/functions/v1/health-mcp/tok1",
+			ingestUrl: "https://abcxyz.supabase.co/functions/v1/health-ingest",
+		});
+	});
+
+	it("keepSecrets re-run (no minted secrets in the result) falls back to the previously-stored secrets", () => {
+		const previous = { ref: "old-ref", mcpToken: "old-tok", ingestKey: "old-key" };
+		const merged = mergeProvisionResult(previous, { ref: "abcxyz" });
+		expect(merged.mcpToken).toBe("old-tok");
+		expect(merged.ingestKey).toBe("old-key");
+		expect(merged.connectorUrl).toBe("https://abcxyz.supabase.co/functions/v1/health-mcp/old-tok");
+		expect(merged.ingestUrl).toBe("https://abcxyz.supabase.co/functions/v1/health-ingest");
+	});
+
+	it("no ref in the result (provisioning stopped early) returns the previous config unchanged", () => {
+		const previous = { ref: "old-ref", mcpToken: "old-tok" };
+		expect(mergeProvisionResult(previous, {})).toBe(previous);
+	});
+
+	it("no previous secrets and none minted this run: connectorUrl stays unset, ingestUrl is still derived", () => {
+		const merged = mergeProvisionResult({}, { ref: "abcxyz" });
+		expect(merged.connectorUrl).toBeUndefined();
+		expect(merged.mcpToken).toBeUndefined();
+		expect(merged.ingestUrl).toBe("https://abcxyz.supabase.co/functions/v1/health-ingest");
 	});
 });
 

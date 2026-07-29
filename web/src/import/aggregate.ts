@@ -123,3 +123,12 @@ export class Aggregator {
 		};
 	}
 }
+
+/** Per-metric entry counts, for the Import panel's summary table. Purely a
+ * client-side count of parsed entries — independent of (and always available
+ * before, in a dry run instead of) whatever `postEntries` reports it wrote. */
+export function summarizeByMetric(entries: IngestEntry[]): Record<string, number> {
+	const counts: Record<string, number> = {};
+	for (const e of entries) counts[e.metric] = (counts[e.metric] ?? 0) + 1;
+	return counts;
+}

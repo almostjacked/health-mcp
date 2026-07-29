@@ -1,7 +1,8 @@
 // Builds the onboarding page: bundles src/main.ts, copies src/index.html +
-// src/styles.css, and copies the repo-root bundled edge functions (produced
-// by `pnpm bundle:functions`) into dist/functions/ so the in-browser
-// provisioner can fetch them same-origin.
+// src/styles.css, copies the repo-root bundled edge functions (produced by
+// `pnpm bundle:functions`) into dist/functions/, and copies
+// packages/core/setup.sql to dist/setup.sql — all three fetched same-origin
+// by the in-browser provisioner at provision time (src/panels/provision.ts).
 import { build } from "esbuild";
 import { readdirSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -11,11 +12,17 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const distDir = path.join(root, "dist");
 const functionsSrcDir = fileURLToPath(new URL("../../dist/functions", import.meta.url));
 const functionsDestDir = path.join(distDir, "functions");
+const setupSqlSrc = fileURLToPath(new URL("../../packages/core/setup.sql", import.meta.url));
 
 if (!existsSync(functionsSrcDir)) {
   console.error(
     `build: ${functionsSrcDir} not found — run \`pnpm bundle:functions\` first.`,
   );
+  process.exit(1);
+}
+
+if (!existsSync(setupSqlSrc)) {
+  console.error(`build: ${setupSqlSrc} not found.`);
   process.exit(1);
 }
 
@@ -34,6 +41,9 @@ console.log("build: bundled dist/main.js");
 copyFileSync(path.join(root, "src/index.html"), path.join(distDir, "index.html"));
 copyFileSync(path.join(root, "src/styles.css"), path.join(distDir, "styles.css"));
 console.log("build: copied index.html + styles.css -> dist/");
+
+copyFileSync(setupSqlSrc, path.join(distDir, "setup.sql"));
+console.log("build: copied setup.sql -> dist/");
 
 mkdirSync(functionsDestDir, { recursive: true });
 const files = readdirSync(functionsSrcDir).filter((f) => f.endsWith(".ts"));

@@ -5,6 +5,7 @@
 // "continue and print the dashboard fallback" discipline), except when a step blocks every
 // step after it (no org, no project ref — there is nothing left to provision against).
 import type { MgmtClient, ProjectSummary } from "./api.js";
+import type { SetupConfig } from "../state.js";
 
 export type ProvisionMode = "new" | "existing";
 
@@ -76,6 +77,40 @@ function message(e: unknown): string {
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The per-user connector URL: the MCP token lives in the path by design.
+ * Browser-side twin of apps/mcp/src/setup.ts's `connectorUrl` — kept in sync deliberately. */
+export function connectorUrl(ref: string, mcpToken: string): string {
+	return `https://${ref}.supabase.co/functions/v1/health-mcp/${mcpToken}`;
+}
+
+/** The ingest endpoint (the key is sent separately, as the `X-Api-Key` header).
+ * Browser-side twin of apps/mcp/src/setup.ts's `ingestUrl` — kept in sync deliberately. */
+export function ingestUrl(ref: string): string {
+	return `https://${ref}.supabase.co/functions/v1/health-ingest`;
+}
+
+/**
+ * Folds a `provisionAll` result into the persisted `SetupConfig`, deriving
+ * `connectorUrl`/`ingestUrl` and preferring newly-minted secrets over
+ * whatever was already stored — but falling back to the previous value when
+ * this run kept existing secrets (`keepSecrets: true`, so `result.mcpToken`/
+ * `ingestKey` come back `undefined`), so a "keep secrets" re-run doesn't blank
+ * out a connector URL the user already has. Returns `previous` unchanged if
+ * `result` has no `ref` (provisioning didn't get far enough to produce one).
+ */
+export function mergeProvisionResult(previous: SetupConfig, result: ProvisionResult): SetupConfig {
+	if (!result.ref) return previous;
+	const mcpToken = result.mcpToken ?? previous.mcpToken;
+	const ingestKey = result.ingestKey ?? previous.ingestKey;
+	const next: SetupConfig = { ...previous, ref: result.ref, ingestUrl: ingestUrl(result.ref) };
+	if (mcpToken) {
+		next.mcpToken = mcpToken;
+		next.connectorUrl = connectorUrl(result.ref, mcpToken);
+	}
+	if (ingestKey) next.ingestKey = ingestKey;
+	return next;
 }
 
 /** True iff `ref`'s entry in a `listProjects()` result reports a healthy/active status —

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Aggregator } from "../src/import/aggregate.js";
+import { Aggregator, summarizeByMetric } from "../src/import/aggregate.js";
 import type { RawRecord } from "../src/import/records.js";
 
 const weight = (v: string, start: string): RawRecord => ({
@@ -65,5 +65,20 @@ describe("Aggregator (backfill.py parity)", () => {
 		const totals = entries.filter((e) => e.metric === "calories");
 		expect(totals.map((t) => t.date)).toEqual(["2026-07-19", "2026-07-20"]);
 		expect(totals[1].value).toBe(100.123457);
+	});
+});
+
+describe("summarizeByMetric", () => {
+	it("counts entries per metric", () => {
+		const { entries } = runAll([
+			weight("205.4", "2026-07-19 07:41:12 -0600"),
+			weight("204.9", "2026-07-20 07:41:12 -0600"),
+			cal("500", "2026-07-19 08:00:00 -0600"),
+		]);
+		expect(summarizeByMetric(entries)).toEqual({ weight: 2, calories: 1 });
+	});
+
+	it("empty input yields an empty object", () => {
+		expect(summarizeByMetric([])).toEqual({});
 	});
 });
