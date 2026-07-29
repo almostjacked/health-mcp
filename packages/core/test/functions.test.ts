@@ -41,4 +41,37 @@ describe("health-ingest edge function", () => {
 		const url = String(fetchMock.mock.calls[0][0]);
 		expect(url).toContain("/rest/v1/measurements?on_conflict=external_id");
 	});
+
+	// CORS: the web importer posts here directly from the browser (api.supabase.com
+	// itself sends no ACAO, so provisioning stays server-side/CLI/manual — but the
+	// ingest endpoint the page also calls needs CORS since it IS a browser fetch).
+	it("OPTIONS preflight returns 204 with ACAO/methods/headers", async () => {
+		const app = buildIngestApp(env);
+		const res = await app.request("/health-ingest", {
+			method: "OPTIONS",
+			headers: {
+				origin: "https://example.com",
+				"access-control-request-method": "POST",
+				"access-control-request-headers": "x-api-key, content-type",
+			},
+		});
+		expect(res.status).toBe(204);
+		expect(res.headers.get("access-control-allow-origin")).toBe("*");
+		const methods = (res.headers.get("access-control-allow-methods") ?? "").split(",").map((s) => s.trim());
+		expect(methods).toEqual(expect.arrayContaining(["POST", "OPTIONS"]));
+		const headers = (res.headers.get("access-control-allow-headers") ?? "").split(",").map((s) => s.trim().toLowerCase());
+		expect(headers).toEqual(expect.arrayContaining(["x-api-key", "content-type"]));
+		expect(res.headers.get("access-control-max-age")).toBe("86400");
+	});
+
+	it("401 response (missing/wrong key) also carries ACAO, so the browser can read the rejection", async () => {
+		const app = buildIngestApp(env);
+		const res = await app.request("/health-ingest", {
+			method: "POST",
+			headers: { origin: "https://example.com", "content-type": "application/json" },
+			body: "{}",
+		});
+		expect(res.status).toBe(401);
+		expect(res.headers.get("access-control-allow-origin")).toBe("*");
+	});
 });

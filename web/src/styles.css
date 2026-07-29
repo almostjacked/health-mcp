@@ -177,6 +177,17 @@ select:focus {
   margin: 0.35rem 0 0;
 }
 
+.wizard-command {
+  background: var(--surface, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  margin: 0;
+  flex: 1 1 auto;
+}
+
 /* ---- provisioning step log + results ---- */
 
 .step-log {

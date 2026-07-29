@@ -7,6 +7,15 @@ import { MgmtClient } from "../provision/api.js";
 import { provisionAll, mergeProvisionResult } from "../provision/steps.js";
 import type { ProvisionMode, ProvisionOptions, ProvisionStep } from "../provision/steps.js";
 import { getConfig, setConfig, setAccessToken, getAccessToken, clearAccessToken, forgetAll } from "../state.js";
+import type { SetupConfig } from "../state.js";
+
+// api.supabase.com sends no Access-Control-Allow-Origin (verified 2026-07-29)
+// — browser calls are blocked and a proxy would violate zero-custody. Flip if
+// Supabase ever opens CORS.
+const BROWSER_PROVISIONING_ENABLED = false;
+
+const SETUP_MANUAL_URL = "https://github.com/almostjacked/health-mcp/blob/main/docs/setup-manual.md";
+const WIZARD_COMMAND = "npx @almostjacked/health-mcp setup";
 
 const TOKEN_DASHBOARD_URL = "https://supabase.com/dashboard/account/tokens";
 const REGIONS: Array<{ value: string; label: string }> = [
@@ -59,7 +68,130 @@ async function loadProvisionInputs(): Promise<{
 	return { setupSql, functionSources: { "health-mcp": healthMcp, "health-ingest": healthIngest } };
 }
 
-export function mountProvisionPanel(container: HTMLElement): void {
+/** Copy-to-clipboard button: writes `getText()` on click (read lazily, since
+ * the wizard command is static but this same helper is reused for the ingest
+ * key which the caller re-reads on every click in case it changed). Falls
+ * back to a visible error rather than throwing if the Clipboard API is
+ * unavailable (e.g. non-secure context) or the write is rejected. */
+function copyButton(getText: () => string, label = "Copy"): HTMLButtonElement {
+	const btn = el("button", { type: "button", class: "btn secondary" }, [label]) as HTMLButtonElement;
+	btn.addEventListener("click", () => {
+		const text = getText();
+		if (!navigator.clipboard?.writeText) {
+			btn.textContent = "Copy failed — select and copy manually";
+			return;
+		}
+		navigator.clipboard
+			.writeText(text)
+			.then(() => {
+				btn.textContent = "Copied!";
+				setTimeout(() => {
+					btn.textContent = label;
+				}, 2000);
+			})
+			.catch(() => {
+				btn.textContent = "Copy failed — select and copy manually";
+			});
+	});
+	return btn;
+}
+
+/** Instructions-mode Provision panel, rendered while
+ * `BROWSER_PROVISIONING_ENABLED` is false: api.supabase.com sends no
+ * Access-Control-Allow-Origin, so the Management API calls the token-flow
+ * code below relies on simply cannot succeed from a browser tab, and a
+ * server-side proxy would put us in custody of the user's Supabase access
+ * token — the one thing this project promises never to hold. Instead this
+ * renders three ways to get the same end state (a provisioned project +
+ * connector/ingest URLs + secrets) and a small form to paste the results of
+ * whichever one you used back into this page's state, so Import/Shortcut
+ * pre-fill exactly as they would have after a successful in-browser run. */
+function mountInstructionsPanel(container: HTMLElement): void {
+	const wizardBlock = el("div", { class: "field" }, [
+		el("p", { class: "hint" }, ["Run this in a terminal (Node ≥ 18, free Supabase account):"]),
+		el("div", { class: "btn-row" }, [el("pre", { class: "wizard-command" }, [el("code", {}, [WIZARD_COMMAND])]), copyButton(() => WIZARD_COMMAND)]),
+		el("p", { class: "hint" }, [
+			"Interactive by default. For scripting/CI, add flags: ",
+			el("code", {}, ["--new --name <name> --region <region> [--org-index N]"]),
+			" to create a project, or ",
+			el("code", {}, ["--existing <project-ref>"]),
+			" to reuse one.",
+		]),
+	]);
+
+	const manualLink = el("p", {}, [
+		"No terminal? Follow the ",
+		el("a", { href: SETUP_MANUAL_URL, target: "_blank", rel: "noreferrer" }, ["manual dashboard setup"]),
+		" instead (~15 minutes, point-and-click).",
+	]);
+
+	const config = getConfig();
+	const refInput = el("input", { type: "text", id: "res-ref", placeholder: "e.g. abcdefghijklmnopqrst" }) as HTMLInputElement;
+	const connectorInput = el("input", {
+		type: "text",
+		id: "res-connector",
+		placeholder: "https://<ref>.supabase.co/functions/v1/health-mcp/<token>",
+	}) as HTMLInputElement;
+	const ingestUrlInput = el("input", {
+		type: "text",
+		id: "res-ingest-url",
+		placeholder: "https://<ref>.supabase.co/functions/v1/health-ingest",
+	}) as HTMLInputElement;
+	const ingestKeyInput = el("input", { type: "password", id: "res-ingest-key", autocomplete: "off", placeholder: "INGEST_KEY" }) as HTMLInputElement;
+	if (config.ref) refInput.value = config.ref;
+	if (config.connectorUrl) connectorInput.value = config.connectorUrl;
+	if (config.ingestUrl) ingestUrlInput.value = config.ingestUrl;
+	if (config.ingestKey) ingestKeyInput.value = config.ingestKey;
+
+	const saveBtn = el("button", { type: "button", class: "btn" }, ["Save"]) as HTMLButtonElement;
+	const savedText = el("p", { class: "hint" }, []) as HTMLParagraphElement;
+	savedText.style.display = "none";
+
+	const resultsForm = el("div", {}, [
+		el("h3", {}, ["Paste your results"]),
+		el("p", { class: "hint" }, [
+			"After running the wizard or the manual steps above, paste what it printed here — this fills in the " +
+				"Import and Shortcut panels below exactly as a successful in-browser provision would have.",
+		]),
+		el("div", { class: "field" }, [el("label", { for: "res-ref" }, ["Project ref"]), refInput]),
+		el("div", { class: "field" }, [el("label", { for: "res-connector" }, ["Connector URL"]), connectorInput]),
+		el("div", { class: "field" }, [el("label", { for: "res-ingest-url" }, ["Ingest URL"]), ingestUrlInput]),
+		el("div", { class: "field" }, [el("label", { for: "res-ingest-key" }, ["Ingest key"]), ingestKeyInput]),
+		el("div", { class: "btn-row" }, [saveBtn]),
+		savedText,
+	]);
+
+	saveBtn.addEventListener("click", () => {
+		const partial: Partial<SetupConfig> = {};
+		const ref = refInput.value.trim();
+		const connectorUrl = connectorInput.value.trim();
+		const ingestUrl = ingestUrlInput.value.trim();
+		const ingestKey = ingestKeyInput.value.trim();
+		if (ref) partial.ref = ref;
+		if (connectorUrl) partial.connectorUrl = connectorUrl;
+		if (ingestUrl) partial.ingestUrl = ingestUrl;
+		if (ingestKey) partial.ingestKey = ingestKey;
+		setConfig(partial);
+		savedText.textContent = "Saved — the Import and Shortcut panels below are now pre-filled.";
+		savedText.style.display = "";
+	});
+
+	container.append(
+		el("p", { class: "notice" }, [
+			"Supabase's Management API (api.supabase.com) doesn't send CORS headers, so this page can't provision a " +
+				"project for you directly — and proxying your access token through a server would mean trusting us with " +
+				"it, which this project is built to avoid. Use one of the two options below, then paste the results back " +
+				"in so the rest of this page works exactly as before.",
+		]),
+		el("h3", {}, ["Option 1: one-command wizard (fastest)"]),
+		wizardBlock,
+		el("h3", {}, ["Option 2: manual dashboard (no terminal)"]),
+		manualLink,
+		resultsForm,
+	);
+}
+
+function mountTokenFlowPanel(container: HTMLElement): void {
 	container.textContent = "";
 
 	// ---- token field ----
@@ -301,4 +433,10 @@ export function mountProvisionPanel(container: HTMLElement): void {
 	// (e.g. from earlier this session) already in state.
 	setMode(mode);
 	renderResults();
+}
+
+export function mountProvisionPanel(container: HTMLElement): void {
+	container.textContent = "";
+	if (BROWSER_PROVISIONING_ENABLED) mountTokenFlowPanel(container);
+	else mountInstructionsPanel(container);
 }

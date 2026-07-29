@@ -11,6 +11,8 @@ export interface FnEnv {
 }
 
 export function buildMcpApp(env: FnEnv): Hono {
+	// No CORS here, intentionally: claude.ai calls this connector server-side (it's
+	// the MCP transport, not a page fetch), so the browser's CORS check never applies.
 	const app = new Hono();
 	const exec = (sql: string) =>
 		runSql({ SUPABASE_URL: env.SUPABASE_URL, SUPABASE_SECRET_KEY: env.SUPABASE_SERVICE_ROLE_KEY }, sql);
