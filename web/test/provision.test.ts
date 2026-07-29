@@ -24,8 +24,8 @@ describe("MgmtClient", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("listOrgs: GETs /v1/organizations with the bearer token and maps id/name", async () => {
-		fetchMock.mockResolvedValue(jsonResponse([{ id: "org1", name: "My Org" }]));
+	it("listOrgs: GETs /v1/organizations with the bearer token and maps id/slug/name", async () => {
+		fetchMock.mockResolvedValue(jsonResponse([{ id: "org1", slug: "my-org", name: "My Org" }]));
 		const client = new MgmtClient("tok123");
 		const orgs = await client.listOrgs();
 
@@ -34,7 +34,7 @@ describe("MgmtClient", () => {
 		expect(url).toBe("https://api.supabase.com/v1/organizations");
 		expect(init.method).toBe("GET");
 		expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok123");
-		expect(orgs).toEqual([{ id: "org1", name: "My Org" }]);
+		expect(orgs).toEqual([{ id: "org1", slug: "my-org", name: "My Org" }]);
 	});
 
 	it("listProjects: GETs /v1/projects and maps ref/name/status", async () => {
@@ -45,13 +45,14 @@ describe("MgmtClient", () => {
 		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe("https://api.supabase.com/v1/projects");
 		expect(init.method).toBe("GET");
+		expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok123");
 		expect(projects).toEqual([{ ref: "abcdefghijklmnopqrst", name: "proj", status: "ACTIVE_HEALTHY" }]);
 	});
 
-	it("createProject: POSTs /v1/projects with the org/region/password and returns the ref", async () => {
+	it("createProject: POSTs /v1/projects with the org slug/region/password and returns the ref", async () => {
 		fetchMock.mockResolvedValue(jsonResponse({ ref: "newprojectref12345aa" }, 201));
 		const client = new MgmtClient("tok123");
-		const ref = await client.createProject("health-mcp", "org1", "us-east-1", "s3cret");
+		const ref = await client.createProject("health-mcp", "my-org", "us-east-1", "s3cret");
 
 		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe("https://api.supabase.com/v1/projects");
@@ -59,7 +60,7 @@ describe("MgmtClient", () => {
 		expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok123");
 		expect(JSON.parse(init.body as string)).toEqual({
 			name: "health-mcp",
-			organization_id: "org1",
+			organization_slug: "my-org",
 			region: "us-east-1",
 			db_pass: "s3cret",
 		});
@@ -74,6 +75,7 @@ describe("MgmtClient", () => {
 		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe("https://api.supabase.com/v1/projects/ref123/database/query");
 		expect(init.method).toBe("POST");
+		expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok123");
 		expect(JSON.parse(init.body as string)).toEqual({ query: "select 1;" });
 	});
 
@@ -103,6 +105,7 @@ describe("MgmtClient", () => {
 		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe("https://api.supabase.com/v1/projects/ref123/secrets");
 		expect(init.method).toBe("POST");
+		expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok123");
 		expect(JSON.parse(init.body as string)).toEqual([
 			{ name: "MCP_TOKEN", value: "a" },
 			{ name: "INGEST_KEY", value: "b" },
@@ -182,7 +185,7 @@ describe("provisionAll", () => {
 
 	it("new-project mode runs orgs -> project -> wait-ready -> schema -> deploy x2 -> secrets", async () => {
 		const client = makeClient({
-			listOrgs: vi.fn().mockResolvedValue([{ id: "org1", name: "Solo Org" }]),
+			listOrgs: vi.fn().mockResolvedValue([{ id: "org1", slug: "solo-org", name: "Solo Org" }]),
 			createProject: vi.fn().mockResolvedValue("newref123456789012ab"),
 			listProjects: vi.fn().mockResolvedValue([{ ref: "newref123456789012ab", name: "n", status: "ACTIVE_HEALTHY" }]),
 		});
@@ -191,7 +194,7 @@ describe("provisionAll", () => {
 
 		expect(steps.map((s) => s.id)).toEqual(["orgs", "project", "wait-ready", "schema", "deploy-health-mcp", "deploy-health-ingest", "secrets"]);
 		expect(steps.every((s) => s.ok)).toBe(true);
-		expect(client.createProject).toHaveBeenCalledWith("health-mcp", "org1", "us-east-1", expect.any(String));
+		expect(client.createProject).toHaveBeenCalledWith("health-mcp", "solo-org", "us-east-1", expect.any(String));
 		expect(result.ref).toBe("newref123456789012ab");
 	});
 
@@ -204,7 +207,7 @@ describe("provisionAll", () => {
 				.mockResolvedValueOnce([{ ref: "r", name: "n", status: "COMING_UP" }])
 				.mockResolvedValueOnce([{ ref: "r", name: "n", status: "ACTIVE_HEALTHY" }]);
 			const client = makeClient({
-				listOrgs: vi.fn().mockResolvedValue([{ id: "org1", name: "Solo" }]),
+				listOrgs: vi.fn().mockResolvedValue([{ id: "org1", slug: "solo", name: "Solo" }]),
 				createProject: vi.fn().mockResolvedValue("r"),
 				listProjects,
 			});
@@ -230,7 +233,7 @@ describe("provisionAll", () => {
 		vi.useFakeTimers();
 		try {
 			const client = makeClient({
-				listOrgs: vi.fn().mockResolvedValue([{ id: "org1", name: "Solo" }]),
+				listOrgs: vi.fn().mockResolvedValue([{ id: "org1", slug: "solo", name: "Solo" }]),
 				createProject: vi.fn().mockResolvedValue("r"),
 				listProjects: vi.fn().mockResolvedValue([{ ref: "r", name: "n", status: "COMING_UP" }]),
 			});
@@ -303,11 +306,11 @@ describe("provisionAll", () => {
 		expect(client.runSql).not.toHaveBeenCalled();
 	});
 
-	it("new mode with multiple orgs and no orgId stops before creating a project", async () => {
+	it("new mode with multiple orgs and no orgSlug stops before creating a project", async () => {
 		const client = makeClient({
 			listOrgs: vi.fn().mockResolvedValue([
-				{ id: "org1", name: "One" },
-				{ id: "org2", name: "Two" },
+				{ id: "org1", slug: "org-one", name: "One" },
+				{ id: "org2", slug: "org-two", name: "Two" },
 			]),
 		});
 		const steps: ProvisionStep[] = [];

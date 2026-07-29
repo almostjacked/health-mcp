@@ -15,7 +15,7 @@ export interface ProvisionOptions {
 	/** Used when mode === "new". Defaults to "health-mcp". */
 	name?: string;
 	/** Used when mode === "new". Required unless the caller already resolved a single org. */
-	orgId?: string;
+	orgSlug?: string;
 	/** Used when mode === "new". Defaults to "us-east-1". */
 	region?: string;
 	/** Contents of packages/core/setup.sql — applied via `runSql`. */
@@ -125,12 +125,12 @@ async function resolveProject(client: MgmtClient, opts: ProvisionOptions, onStep
 		return opts.ref;
 	}
 
-	let orgId = opts.orgId;
-	if (!orgId) {
+	let orgSlug = opts.orgSlug;
+	if (!orgSlug) {
 		try {
 			const orgs = await client.listOrgs();
 			if (orgs.length === 1) {
-				orgId = orgs[0].id;
+				orgSlug = orgs[0].slug;
 				onStep({ id: "orgs", label: "Select organization", ok: true, detail: `Using organization "${orgs[0].name}"` });
 			} else if (orgs.length === 0) {
 				onStep({
@@ -159,12 +159,12 @@ async function resolveProject(client: MgmtClient, opts: ProvisionOptions, onStep
 			});
 		}
 	}
-	if (!orgId) return null;
+	if (!orgSlug) return null;
 
 	const name = opts.name ?? "health-mcp";
 	const region = opts.region ?? "us-east-1";
 	try {
-		const ref = await client.createProject(name, orgId, region, randomToken());
+		const ref = await client.createProject(name, orgSlug, region, randomToken());
 		onStep({ id: "project", label: "Create project", ok: true, detail: `Created project ${ref}` });
 		return ref;
 	} catch (e) {

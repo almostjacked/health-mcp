@@ -9,9 +9,9 @@
 // Endpoint contracts (verified against the Supabase CLI's generated OpenAPI operations —
 // packages/api/src/generated/contracts.ts in supabase/cli — see the task report for the
 // full verification trail):
-//   GET    /v1/organizations                        -> [{id, name, ...}]
+//   GET    /v1/organizations                        -> [{id, slug, name, ...}]
 //   GET    /v1/projects                              -> [{ref, name, status, ...}]
-//   POST   /v1/projects                               body {name, organization_id, region, db_pass} -> {ref, ...}
+//   POST   /v1/projects                               body {name, organization_slug, region, db_pass} -> {ref, ...}
 //   POST   /v1/projects/{ref}/database/query          body {query} -> (void/rows)
 //   POST   /v1/projects/{ref}/functions/deploy?slug=  multipart: `metadata` JSON part
 //                                                      {name, verify_jwt, entrypoint_path} + `file` part(s)
@@ -21,6 +21,7 @@ const API_BASE = "https://api.supabase.com";
 
 export interface OrgSummary {
 	id: string;
+	slug: string;
 	name: string;
 }
 
@@ -72,9 +73,11 @@ export class MgmtClient {
 		return data
 			.map((o) => {
 				const id = (o as { id?: unknown } | undefined)?.id;
+				const slug = (o as { slug?: unknown } | undefined)?.slug;
 				const name = (o as { name?: unknown } | undefined)?.name;
 				if (typeof id !== "string" || id.length === 0) return null;
-				return { id, name: typeof name === "string" && name.length > 0 ? name : id };
+				if (typeof slug !== "string" || slug.length === 0) return null;
+				return { id, slug, name: typeof name === "string" && name.length > 0 ? name : id };
 			})
 			.filter((o): o is OrgSummary => o !== null);
 	}
@@ -98,10 +101,10 @@ export class MgmtClient {
 	}
 
 	/** Returns the newly created project's ref. */
-	async createProject(name: string, orgId: string, region: string, dbPass: string): Promise<string> {
+	async createProject(name: string, orgSlug: string, region: string, dbPass: string): Promise<string> {
 		const data = (await this.request("POST", "/v1/projects", {
 			name,
-			organization_id: orgId,
+			organization_slug: orgSlug,
 			region,
 			db_pass: dbPass,
 		})) as { ref?: unknown; id?: unknown } | undefined;
