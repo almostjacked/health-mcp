@@ -4,8 +4,10 @@
 // which carry their own tests — this file just renders form state, hands
 // values to those modules, and renders what comes back.
 import { MgmtClient } from "../provision/api.js";
-import { provisionAll, mergeProvisionResult } from "../provision/steps.js";
+import { provisionAll, mergeProvisionResult, randomToken, ingestUrl } from "../provision/steps.js";
 import type { ProvisionMode, ProvisionOptions, ProvisionStep } from "../provision/steps.js";
+import { manualSteps, previewConnectorUrl } from "../provision/manual-steps.js";
+import type { ManualStep } from "../provision/manual-steps.js";
 import { getConfig, setConfig, setAccessToken, getAccessToken, clearAccessToken, forgetAll } from "../state.js";
 import type { SetupConfig } from "../state.js";
 
@@ -96,15 +98,207 @@ function copyButton(getText: () => string, label = "Copy"): HTMLButtonElement {
 	return btn;
 }
 
+/** Copy-to-clipboard button for the manual-path artifacts (setup.sql, the two
+ * function sources): fetches `url` same-origin on click — same files
+ * `loadProvisionInputs` above pulls for the in-browser wizard — and writes
+ * the response body to the clipboard. Never bundled into main.js; see that
+ * function's banner for why these are fetched rather than inlined. */
+function copyFetchButton(url: string, label: string): HTMLButtonElement {
+	const btn = el("button", { type: "button", class: "btn secondary" }, [label]) as HTMLButtonElement;
+	btn.addEventListener("click", () => {
+		if (!navigator.clipboard?.writeText) {
+			btn.textContent = "Copy failed — open the link above and copy manually";
+			return;
+		}
+		btn.disabled = true;
+		btn.textContent = "Copying…";
+		fetch(url)
+			.then((res) => {
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				return res.text();
+			})
+			.then((text) => navigator.clipboard.writeText(text))
+			.then(() => {
+				btn.textContent = "Copied!";
+				setTimeout(() => {
+					btn.textContent = label;
+				}, 2000);
+			})
+			.catch(() => {
+				btn.textContent = "Copy failed — open the link above and copy manually";
+			})
+			.finally(() => {
+				btn.disabled = false;
+			});
+	});
+	return btn;
+}
+
+/** Wiring shared between the manual path's step 5 (mint MCP_TOKEN/INGEST_KEY)
+ * and step 6 (build + persist the connector URL) — step 6 owns the single
+ * `setConfig` write, but needs the ingest key step 5 minted, and step 5 needs
+ * to push its freshly-minted MCP_TOKEN into step 6's input. */
+interface ConnectorWiring {
+	refInput: HTMLInputElement;
+	mcpTokenInput: HTMLInputElement;
+	onMint: (mcpToken: string, ingestKey: string) => void;
+}
+
+/** Renders one manual-path step. Steps 1-4 are uniform — a deep link plus,
+ * where applicable, a button that fetches and copies a paste-able artifact.
+ * Steps 5 and 6 are interactive and rendered specially, but their actual
+ * logic (minting tokens, building the connector URL) is `randomToken`/
+ * `previewConnectorUrl` from ../provision/manual-steps.js, not anything
+ * defined here. */
+function renderManualStep(step: ManualStep, wiring: ConnectorWiring): HTMLLIElement {
+	const body: Array<Node | string> = [el("strong", {}, [step.title])];
+	if (step.note) body.push(el("p", { class: "hint" }, [step.note]));
+
+	if (step.id === "secrets") {
+		const mcpOut = el("code", { class: "generated-value" }, [step.secretsPrefill?.mcpToken ?? "—"]);
+		const ingestOut = el("code", { class: "generated-value" }, [step.secretsPrefill?.ingestKey ?? "—"]);
+		const mcpCopy = copyButton(() => mcpOut.textContent ?? "", "Copy MCP_TOKEN");
+		const ingestCopy = copyButton(() => ingestOut.textContent ?? "", "Copy INGEST_KEY");
+		mcpCopy.disabled = !step.secretsPrefill;
+		ingestCopy.disabled = !step.secretsPrefill;
+		const generateBtn = el("button", { type: "button", class: "btn" }, [
+			step.secretsPrefill ? "Regenerate values" : "Generate values",
+		]) as HTMLButtonElement;
+		generateBtn.addEventListener("click", () => {
+			const mcpToken = randomToken();
+			const ingestKey = randomToken();
+			mcpOut.textContent = mcpToken;
+			ingestOut.textContent = ingestKey;
+			mcpCopy.disabled = false;
+			ingestCopy.disabled = false;
+			generateBtn.textContent = "Regenerate values";
+			wiring.onMint(mcpToken, ingestKey);
+		});
+		body.push(
+			// Every step but "connector" carries href/linkLabel — see ManualStep's banner.
+			el("div", { class: "btn-row" }, [
+				el("a", { href: step.href!, target: "_blank", rel: "noreferrer", class: "btn secondary" }, [step.linkLabel!]),
+				generateBtn,
+			]),
+			el("div", { class: "secret-row" }, [el("span", { class: "secret-label" }, ["MCP_TOKEN"]), mcpOut, mcpCopy]),
+			el("div", { class: "secret-row" }, [el("span", { class: "secret-label" }, ["INGEST_KEY"]), ingestOut, ingestCopy]),
+		);
+		return el("li", { class: "manual-step" }, body);
+	}
+
+	if (step.id === "connector") {
+		const preview = step.connectorPrefill?.preview;
+		const connectorPreview = el("pre", { class: "wizard-command" }, [
+			preview ?? "Fill in both fields above to build your connector URL.",
+		]) as HTMLPreElement;
+		const copyConnectorBtn = copyButton(() => connectorPreview.textContent ?? "", "Copy connector URL");
+		copyConnectorBtn.disabled = !preview;
+
+		function refresh(): void {
+			const ref = wiring.refInput.value.trim();
+			const mcpToken = wiring.mcpTokenInput.value.trim();
+			const next = previewConnectorUrl(ref, mcpToken);
+			connectorPreview.textContent = next ?? "Fill in both fields above to build your connector URL.";
+			copyConnectorBtn.disabled = !next;
+		}
+		wiring.refInput.addEventListener("input", refresh);
+		wiring.mcpTokenInput.addEventListener("input", refresh);
+
+		body.push(
+			el("div", { class: "field" }, [el("label", { for: "manual-ref" }, ["Project ref"]), wiring.refInput]),
+			el("div", { class: "field" }, [el("label", { for: "manual-mcp-token" }, ["MCP_TOKEN"]), wiring.mcpTokenInput]),
+			el("div", { class: "btn-row" }, [connectorPreview, copyConnectorBtn]),
+		);
+		return el("li", { class: "manual-step" }, body);
+	}
+
+	// Only reached for steps 1-4, which always carry href/linkLabel — see ManualStep's banner.
+	const linkRow: Array<Node | string> = [
+		el("a", { href: step.href!, target: "_blank", rel: "noreferrer", class: "btn secondary" }, [step.linkLabel!]),
+	];
+	if (step.fetchUrl && step.copyLabel) linkRow.push(copyFetchButton(step.fetchUrl, step.copyLabel));
+	body.push(el("div", { class: "btn-row" }, linkRow));
+	return el("li", { class: "manual-step" }, body);
+}
+
+/** Builds the manual path's full numbered step list (1-6), wiring step 5's
+ * minted secrets into step 6's connector-URL builder and persisting the
+ * result to shared state via `setConfig` on every change to either of step
+ * 6's inputs — so Import/Shortcut below pre-fill without a separate "Save"
+ * step. All step data/URLs/token-minting logic lives in
+ * ../provision/manual-steps.js; this only wires DOM to it. */
+function renderManualSteps(): HTMLOListElement {
+	const steps = manualSteps(getConfig());
+	const connectorStep = steps[5];
+
+	const refInput = el("input", {
+		type: "text",
+		id: "manual-ref",
+		placeholder: "e.g. abcdefghijklmnopqrst",
+		value: connectorStep.connectorPrefill?.ref ?? "",
+	}) as HTMLInputElement;
+	const mcpTokenInput = el("input", {
+		type: "text",
+		id: "manual-mcp-token",
+		placeholder: "MCP_TOKEN",
+		value: connectorStep.connectorPrefill?.mcpToken ?? "",
+	}) as HTMLInputElement;
+
+	let mintedIngestKey: string | undefined = getConfig().ingestKey;
+
+	function persist(): void {
+		const ref = refInput.value.trim();
+		const mcpToken = mcpTokenInput.value.trim();
+		const partial: Partial<SetupConfig> = {};
+		if (ref) {
+			partial.ref = ref;
+			partial.ingestUrl = ingestUrl(ref);
+		}
+		if (mcpToken) partial.mcpToken = mcpToken;
+		if (mintedIngestKey) partial.ingestKey = mintedIngestKey;
+		const preview = previewConnectorUrl(ref, mcpToken);
+		if (preview) partial.connectorUrl = preview;
+		if (Object.keys(partial).length > 0) setConfig(partial);
+	}
+	refInput.addEventListener("input", persist);
+	mcpTokenInput.addEventListener("input", persist);
+
+	const wiring: ConnectorWiring = {
+		refInput,
+		mcpTokenInput,
+		onMint: (mcpToken, ingestKey) => {
+			mintedIngestKey = ingestKey;
+			mcpTokenInput.value = mcpToken;
+			// Fires both this function's own `persist` listener and the connector
+			// step's preview-refresh listener — same path a manual keystroke takes.
+			mcpTokenInput.dispatchEvent(new Event("input"));
+		},
+	};
+
+	const list = el(
+		"ol",
+		{ class: "manual-steps" },
+		steps.map((step) => renderManualStep(step, wiring)),
+	) as HTMLOListElement;
+
+	// A prior session already had both values — persist immediately so the
+	// derived ingestUrl/connectorUrl are in state without waiting on input.
+	if (connectorStep.connectorPrefill?.preview) persist();
+
+	return list;
+}
+
 /** Instructions-mode Provision panel, rendered while
  * `BROWSER_PROVISIONING_ENABLED` is false: api.supabase.com sends no
  * Access-Control-Allow-Origin, so the Management API calls the token-flow
  * code below relies on simply cannot succeed from a browser tab, and a
  * server-side proxy would put us in custody of the user's Supabase access
  * token — the one thing this project promises never to hold. Instead this
- * renders three ways to get the same end state (a provisioned project +
- * connector/ingest URLs + secrets) and a small form to paste the results of
- * whichever one you used back into this page's state, so Import/Shortcut
+ * renders two ways to get the same end state (a provisioned project +
+ * connector/ingest URLs + secrets): the one-command wizard, or a numbered
+ * manual-dashboard path whose every step deep-links straight to the dashboard
+ * screen it needs and, where there's an artifact to paste, copies it for you —
+ * writing straight into shared state as you go, so Import/Shortcut below
  * pre-fill exactly as they would have after a successful in-browser run. */
 function mountInstructionsPanel(container: HTMLElement): void {
 	const wizardBlock = el("div", { class: "field" }, [
@@ -119,75 +313,23 @@ function mountInstructionsPanel(container: HTMLElement): void {
 		]),
 	]);
 
-	const manualLink = el("p", {}, [
-		"No terminal? Follow the ",
-		el("a", { href: SETUP_MANUAL_URL, target: "_blank", rel: "noreferrer" }, ["manual dashboard setup"]),
-		" instead (~15 minutes, point-and-click).",
+	const writtenGuideLink = el("p", { class: "hint" }, [
+		"Prefer a plain written walkthrough? See ",
+		el("a", { href: SETUP_MANUAL_URL, target: "_blank", rel: "noreferrer" }, ["docs/setup-manual.md"]),
+		".",
 	]);
-
-	const config = getConfig();
-	const refInput = el("input", { type: "text", id: "res-ref", placeholder: "e.g. abcdefghijklmnopqrst" }) as HTMLInputElement;
-	const connectorInput = el("input", {
-		type: "text",
-		id: "res-connector",
-		placeholder: "https://<ref>.supabase.co/functions/v1/health-mcp/<token>",
-	}) as HTMLInputElement;
-	const ingestUrlInput = el("input", {
-		type: "text",
-		id: "res-ingest-url",
-		placeholder: "https://<ref>.supabase.co/functions/v1/health-ingest",
-	}) as HTMLInputElement;
-	const ingestKeyInput = el("input", { type: "password", id: "res-ingest-key", autocomplete: "off", placeholder: "INGEST_KEY" }) as HTMLInputElement;
-	if (config.ref) refInput.value = config.ref;
-	if (config.connectorUrl) connectorInput.value = config.connectorUrl;
-	if (config.ingestUrl) ingestUrlInput.value = config.ingestUrl;
-	if (config.ingestKey) ingestKeyInput.value = config.ingestKey;
-
-	const saveBtn = el("button", { type: "button", class: "btn" }, ["Save"]) as HTMLButtonElement;
-	const savedText = el("p", { class: "hint" }, []) as HTMLParagraphElement;
-	savedText.style.display = "none";
-
-	const resultsForm = el("div", {}, [
-		el("h3", {}, ["Paste your results"]),
-		el("p", { class: "hint" }, [
-			"After running the wizard or the manual steps above, paste what it printed here — this fills in the " +
-				"Import and Shortcut panels below exactly as a successful in-browser provision would have.",
-		]),
-		el("div", { class: "field" }, [el("label", { for: "res-ref" }, ["Project ref"]), refInput]),
-		el("div", { class: "field" }, [el("label", { for: "res-connector" }, ["Connector URL"]), connectorInput]),
-		el("div", { class: "field" }, [el("label", { for: "res-ingest-url" }, ["Ingest URL"]), ingestUrlInput]),
-		el("div", { class: "field" }, [el("label", { for: "res-ingest-key" }, ["Ingest key"]), ingestKeyInput]),
-		el("div", { class: "btn-row" }, [saveBtn]),
-		savedText,
-	]);
-
-	saveBtn.addEventListener("click", () => {
-		const partial: Partial<SetupConfig> = {};
-		const ref = refInput.value.trim();
-		const connectorUrl = connectorInput.value.trim();
-		const ingestUrl = ingestUrlInput.value.trim();
-		const ingestKey = ingestKeyInput.value.trim();
-		if (ref) partial.ref = ref;
-		if (connectorUrl) partial.connectorUrl = connectorUrl;
-		if (ingestUrl) partial.ingestUrl = ingestUrl;
-		if (ingestKey) partial.ingestKey = ingestKey;
-		setConfig(partial);
-		savedText.textContent = "Saved — the Import and Shortcut panels below are now pre-filled.";
-		savedText.style.display = "";
-	});
 
 	container.append(
 		el("p", { class: "notice" }, [
 			"Supabase's Management API (api.supabase.com) doesn't send CORS headers, so this page can't provision a " +
 				"project for you directly — and proxying your access token through a server would mean trusting us with " +
-				"it, which this project is built to avoid. Use one of the two options below, then paste the results back " +
-				"in so the rest of this page works exactly as before.",
+				"it, which this project is built to avoid. Use one of the two options below.",
 		]),
-		el("h3", {}, ["Option 1: one-command wizard (fastest)"]),
+		el("h3", {}, ["Option 1: one-command wizard (recommended, fastest)"]),
 		wizardBlock,
-		el("h3", {}, ["Option 2: manual dashboard (no terminal)"]),
-		manualLink,
-		resultsForm,
+		el("h3", {}, ["Option 2: manual dashboard (~5 minutes, point-and-click)"]),
+		renderManualSteps(),
+		writtenGuideLink,
 	);
 }
 
