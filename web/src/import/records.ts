@@ -54,12 +54,16 @@ export interface RawRecord {
 	creationDate?: string;
 }
 
-/** Streams `<Record .../>` elements out of export.xml text chunks. Records in
- * Apple Health exports are self-closing single elements; we only need their
- * attributes, so a scanning tokenizer beats a real XML parser at GB scale.
+/** Streams `<Record .../>` elements out of export.xml text chunks. We only
+ * need a Record's own attributes, so a scanning tokenizer beats a real XML
+ * parser at GB scale. Records may be self-closing (`<Record .../>`) or, as
+ * real Apple Health exports routinely do, wrap `<MetadataEntry key value/>`
+ * children (`<Record ...>...</Record>`) — either way the Record's own
+ * attributes end at the first ">" after "<Record ". Scanning for that "/>"
+ * instead would let a child's `value=` attribute overwrite the Record's own.
  * Carries an internal tail buffer so elements split across chunk boundaries
- * are reassembled; everything that is not a complete `<Record .../>` is
- * discarded as it streams past. */
+ * are reassembled; everything that is not a Record's opening tag (children,
+ * `</Record>` closers, other noise) is discarded as it streams past. */
 export class RecordScanner {
 	private buf = "";
 
@@ -68,14 +72,17 @@ export class RecordScanner {
 		const out: RawRecord[] = [];
 		let idx: number;
 		while ((idx = this.buf.indexOf("<Record ")) !== -1) {
-			const close = this.buf.indexOf("/>", idx);
+			const close = this.buf.indexOf(">", idx);
 			if (close === -1) {
 				// incomplete element — keep from the element start, drop the prefix
 				this.buf = this.buf.slice(idx);
 				return out;
 			}
+			// Attribute region = the opening tag only (stops before any child
+			// elements like <MetadataEntry .../>, whose value= would otherwise
+			// overwrite the Record's own — real exports nest these routinely).
 			const element = this.buf.slice(idx, close);
-			this.buf = this.buf.slice(close + 2);
+			this.buf = this.buf.slice(close + 1);
 			const rec: Partial<RawRecord> = {};
 			for (const m of element.matchAll(ATTR_RE)) {
 				if (KEEP.has(m[1])) (rec as Record<string, string>)[m[1]] = m[2];

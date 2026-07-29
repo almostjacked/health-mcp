@@ -32,4 +32,27 @@ describe("RecordScanner", () => {
 		const out = [...s.feed(withEntities), ...s.end()];
 		expect(out[0].type).toBe("HKQuantityTypeIdentifierDietaryProtein");
 	});
+	it("does not let MetadataEntry children overwrite the Record's own attributes", () => {
+		const nested =
+			`<Record type="HKQuantityTypeIdentifierDietaryEnergyConsumed" unit="Cal" value="418.4" ` +
+			`startDate="2026-07-19 08:00:00 -0600" creationDate="2026-07-19 08:00:05 -0600">` +
+			` <MetadataEntry key="HKWasUserEntered" value="1"/> </Record>`;
+		const s = new RecordScanner();
+		const out = [...s.feed(nested), ...s.end()];
+		expect(out).toHaveLength(1);
+		expect(out[0].value).toBe("418.4");
+		expect(out[0].unit).toBe("Cal");
+	});
+	it("nested form is chunk-boundary safe too", () => {
+		const nested =
+			`<Record type="HKQuantityTypeIdentifierBodyMass" unit="lb" value="205.4" ` +
+			`startDate="2026-07-19 07:41:12 -0600" creationDate="2026-07-19 07:41:20 -0600">` +
+			`<MetadataEntry key="x" value="9"/></Record>`;
+		const s = new RecordScanner();
+		const out = [];
+		for (const ch of nested) out.push(...s.feed(ch));
+		out.push(...s.end());
+		expect(out).toHaveLength(1);
+		expect(out[0].value).toBe("205.4");
+	});
 });
