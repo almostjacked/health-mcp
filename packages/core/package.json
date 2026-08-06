@@ -1,6 +1,6 @@
 {
   "name": "@almostjacked/health-mcp-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Core for health-mcp: data tools over a user-owned Supabase health database (zero custody).",
   "type": "module",
   "main": "dist/index.js",
