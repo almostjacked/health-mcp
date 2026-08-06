@@ -1,8 +1,10 @@
 # Manual dashboard setup (~5 minutes, no terminal)
 
-This path uses only the Supabase web dashboard and your browser — no Node,
-no CLI, nothing installed locally. If you'd rather run one command, see the
-[wizard](../README.md#1-wizard-fastest--one-command) instead.
+This is step 1 of the [four-step setup](../README.md#get-set-up-four-steps-20-minutes) —
+creating your database and connector — done by hand. It uses only the
+Supabase web dashboard and your browser: no Node, no CLI, nothing installed
+locally. If you'd rather run one command instead, see
+[`npx @almostjacked/health-mcp setup`](../README.md#1-create-your-database--connector).
 
 The [onboarding page](https://almostjacked.github.io/health-mcp/) walks
 through these same six steps with deep links that open the exact dashboard
@@ -105,7 +107,15 @@ sent as a POST with header `X-Api-Key: <INGEST_KEY>` and a JSON body of
 
 ## Done
 
-That's the whole manual path — same end state as the wizard: a project with
-the schema applied, both functions deployed, secrets set, and a connector
-URL ready to add to Claude. Next: [set up the Shortcut](shortcut.md) to
-start syncing data.
+That's the whole manual path — same end state as the wizard or the
+[setup page](https://almostjacked.github.io/health-mcp/): a project with the
+schema applied, both functions deployed, secrets set, and a connector URL
+ready to add to Claude.
+
+**You've finished step 1 — go load your history next.** Export your Apple
+Health data (Health app → your profile → Export All Health Data) and drop
+`export.zip` on the setup page's
+[Import panel](https://almostjacked.github.io/health-mcp/#import) — dry-run
+first. Skip this and adaptive-TDEE needs ~2 weeks of daily syncs before it
+works; do it and everything works immediately. After that:
+[set up the Shortcut](shortcut.md) for the daily sync, then connect Claude.

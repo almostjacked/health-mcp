@@ -177,6 +177,23 @@ select:focus {
   margin: 0.35rem 0 0;
 }
 
+.next-step {
+  border-left: 3px solid var(--accent);
+  padding: 0.4rem 0 0.4rem 0.75rem;
+  font-size: 0.88rem;
+  color: var(--text);
+  margin: 1rem 0 0;
+}
+
+.next-step .wizard-command {
+  margin: 0.5rem 0;
+}
+
+.next-step .hint {
+  display: block;
+  margin-top: 0.35rem;
+}
+
 .wizard-command {
   background: var(--surface, rgba(255, 255, 255, 0.04));
   border: 1px solid var(--border);

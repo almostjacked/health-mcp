@@ -86,6 +86,38 @@ function automationSteps(): HTMLOListElement {
 	]);
 }
 
+/** Final journey nudge shared by both Shortcut render paths: once the daily
+ * sync is wired up, the only step left is adding the connector to claude.ai —
+ * reminds the reader of their connector URL and flags the one transient
+ * claude.ai error worth not panicking over. Mounted panels never remount, so
+ * this listens for CONFIG_CHANGED_EVENT the same way the URL/key fields
+ * above do — Provision may not have produced a connector URL yet at initial
+ * mount (the three panels all mount at page load, before any step runs). */
+function connectClaudeNudge(): HTMLParagraphElement {
+	const nudge = el("p", { class: "next-step" }, []) as HTMLParagraphElement;
+
+	function render(connectorUrl: string | undefined): void {
+		nudge.textContent = "";
+		const body: Array<Node | string> = [
+			el("strong", {}, ["Finally:"]),
+			" connect Claude — claude.ai → Settings → Connectors → Add custom connector",
+		];
+		body.push(connectorUrl ? ", paste in your connector URL:" : ", paste in the connector URL from step 1.");
+		nudge.append(...body);
+		if (connectorUrl) nudge.append(el("pre", { class: "wizard-command" }, [connectorUrl]));
+		nudge.append(
+			el("span", { class: "hint" }, [
+				' If it fails with "Couldn\'t register with [name]\'s sign-in service", that\'s a transient claude.ai ' +
+					"hiccup — just try adding it again.",
+			]),
+		);
+	}
+
+	render(getConfig().connectorUrl);
+	window.addEventListener(CONFIG_CHANGED_EVENT, () => render(getConfig().connectorUrl));
+	return nudge;
+}
+
 function mountBrowserBuilder(container: HTMLElement): void {
 	const config = getConfig();
 
@@ -141,6 +173,7 @@ function mountBrowserBuilder(container: HTMLElement): void {
 		installSteps(),
 		el("h3", {}, ["2. Turn on the daily automation"]),
 		automationSteps(),
+		connectClaudeNudge(),
 	);
 
 	generateBtn.addEventListener("click", () => {
@@ -193,7 +226,13 @@ function mountPythonFallback(container: HTMLElement): void {
 		);
 	}
 
-	container.append(el("h3", {}, ["Install it on your iPhone"]), installSteps(), el("h3", {}, ["Turn on the daily automation"]), automationSteps());
+	container.append(
+		el("h3", {}, ["Install it on your iPhone"]),
+		installSteps(),
+		el("h3", {}, ["Turn on the daily automation"]),
+		automationSteps(),
+		connectClaudeNudge(),
+	);
 }
 
 export function mountShortcutPanel(container: HTMLElement): void {

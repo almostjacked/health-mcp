@@ -153,6 +153,9 @@ export function mountImportPanel(container: HTMLElement): void {
 				kvRows.flatMap(([k, v]) => [el("dt", {}, [k]), el("dd", {}, [v])]),
 			),
 		);
+		summaryWrap.append(
+			el("p", { class: "next-step" }, [el("strong", {}, ["Next:"]), " set up the daily sync below."]),
+		);
 	}
 
 	importBtn.addEventListener("click", () => {

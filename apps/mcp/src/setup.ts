@@ -431,12 +431,20 @@ function printResults(ref: string, mcpToken: string, ingestKey: string): void {
       `  URL: ${ingest}\n` +
       `  Key: ${ingestKey}\n` +
       '  (send the key as the "X-Api-Key" header — store it safely, it will not be printed again)\n\n' +
-      "Add the connector to claude.ai:\n" +
-      "  1. Open claude.ai -> Settings -> Connectors -> Add custom connector.\n" +
-      "  2. Paste the Connector URL above as the URL.\n" +
-      "  3. Save. Claude can now use your health-mcp tools.\n\n" +
       "If any step above printed a manual fallback, finish it in the Supabase dashboard\n" +
-      `(https://supabase.com/dashboard/project/${ref}) before using the connector.\n`,
+      `(https://supabase.com/dashboard/project/${ref}) before continuing.\n\n` +
+      "Next steps:\n" +
+      "  1. Load your history: Health app -> your profile -> Export All Health Data,\n" +
+      "     then drop the export.zip on the setup page's Import panel (dry-run first).\n" +
+      "     Skip this and adaptive-TDEE needs ~2 weeks of daily syncs before it works;\n" +
+      "     do it and everything works immediately.\n" +
+      "  2. Build your Shortcut: https://almostjacked.github.io/health-mcp/#shortcut\n" +
+      "     generates your personal iOS Shortcut for the daily sync -- install it and\n" +
+      "     turn on the 9 AM automation.\n" +
+      "  3. Connect Claude: claude.ai -> Settings -> Connectors -> Add custom connector,\n" +
+      "     paste in the Connector URL above, and save.\n" +
+      '     (If it fails with "Couldn\'t register with [name]\'s sign-in service", that\'s a\n' +
+      "     transient claude.ai hiccup -- just try adding it again.)\n",
   );
 }
 

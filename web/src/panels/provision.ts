@@ -330,6 +330,10 @@ function mountInstructionsPanel(container: HTMLElement): void {
 		el("h3", {}, ["Option 2: manual dashboard (~5 minutes, point-and-click)"]),
 		renderManualSteps(),
 		writtenGuideLink,
+		el("p", { class: "next-step" }, [
+			el("strong", {}, ["Next:"]),
+			" load your history below.",
+		]),
 	);
 }
 
@@ -514,6 +518,7 @@ function mountTokenFlowPanel(container: HTMLElement): void {
 				]),
 			);
 		}
+		results.append(el("p", { class: "next-step" }, [el("strong", {}, ["Next:"]), " load your history below."]));
 		results.style.display = "";
 	}
 

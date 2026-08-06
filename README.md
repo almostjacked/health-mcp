@@ -11,17 +11,69 @@ holds your data or your keys. An iOS Shortcut syncs it daily from Apple
 Health; Claude (or any MCP client) reads it back through a connector that
 runs entirely inside your own project.
 
-```
-Apple Health --> "Sync Health Data" Shortcut --> your health-ingest function --> your Postgres
-                                                                                      |
-Claude  <-- run_readonly (SELECT-only) <-- your health-mcp connector function <------+
-```
+## Get set up (four steps, ~20 minutes)
 
-Nothing above touches infrastructure we operate. The two Edge Functions run
-on your Supabase project; the only thing that ever leaves your device is the
-Shortcut's HTTP POST straight to your own project's URL.
+### 1. Create your database + connector
 
-## Pair it with fitness-tools
+Three ways, pick one — all three end with the same thing: your connector
+URL, plus your ingest URL and ingest key.
+
+- **[The setup page](https://almostjacked.github.io/health-mcp/)** — no
+  terminal, guided clicks through your Supabase dashboard.
+- **`npx @almostjacked/health-mcp setup`** — fastest, needs Node ≥ 18. Walks
+  you through logging in to Supabase, picking or creating a project,
+  applying the schema, deploying both functions, and minting your secrets,
+  then prints the connector URL and Shortcut config.
+- **[Manual dashboard walkthrough](docs/setup-manual.md)** — the same steps
+  as the setup page, written out for anyone who'd rather read them first or
+  do them by hand.
+
+> Supabase's free tier allows 2 active projects, so this fits alongside one
+> other free project you may already have.
+
+### 2. Load your history
+
+Without this, [adaptive-TDEE](#pair-it-with-fitness-tools) needs about two
+weeks of daily syncs before it has enough data to work. With it, everything
+works immediately.
+
+1. On your iPhone: **Health app → your profile picture → Export All Health
+   Data**. This produces an `export.zip` (can take a few minutes for a long
+   history).
+2. Get that file to whatever device you're setting up from, then drop it on
+   the setup page's **[Import panel](https://almostjacked.github.io/health-mcp/#import)**.
+   Leave **Dry run** checked first to preview what would be sent before you
+   commit to it.
+
+### 3. Set up the daily sync
+
+The **[Shortcut panel](https://almostjacked.github.io/health-mcp/#shortcut)**
+builds a personal iOS Shortcut wired to your ingest URL and key — download
+it, install it on your iPhone, then turn on the 9 AM daily automation. Full
+click-by-click detail (including what to do if a step doesn't survive the
+iOS import): **[docs/shortcut.md](docs/shortcut.md)**.
+
+### 4. Connect Claude
+
+1. Open **claude.ai → Settings → Connectors → Add custom connector**.
+2. Paste in your connector URL from step 1.
+3. Save. Claude can now use your health-mcp tools.
+
+> If adding the connector fails with *"Couldn't register with [name]'s
+> sign-in service"*, that's a transient claude.ai hiccup, not a problem with
+> your connector — just try adding it again.
+
+## Use it
+
+Ask Claude things like:
+
+> What's my average calorie intake this week vs last?
+
+> Show me my weight trend over the last 90 days.
+
+> Has my daily sync stalled? Check get_sync_status.
+
+### Pair it with fitness-tools
 
 health-mcp answers "what happened" (your logged weight and calories);
 [fitness-tools](https://github.com/almostjacked/fitness-tools) answers "so
@@ -30,88 +82,15 @@ what" (TDEE, macros, body fat, 1RM). The `get_energy_inputs` tool returns
 `adaptive-tdee` — no reformatting needed. Ask Claude:
 
 > Get my energy inputs for the last 90 days, then compute my adaptive TDEE
-
-> `adaptive-tdee` needs at least 10 days that have BOTH a weigh-in and a calorie total — expect ~2 weeks of syncing before the pairing works.
-
 > with fitness-tools.
+
+> `adaptive-tdee` needs at least 10 days that have BOTH a weigh-in and a
+> calorie total — if you skipped [step 2](#2-load-your-history), expect ~2
+> weeks of syncing before the pairing works.
 
 If you also train with Hevy, pair with
 [hevy-mcp](https://github.com/almostjacked/hevy-mcp) for the training side of
 the picture (routines, logged sets, 1RM trend).
-
-## Install
-
-Three ways to get a working connector. All three end with the same thing: a
-Supabase project holding your two tables (`daily_totals`, `measurements`),
-two Edge Functions (`health-mcp`, `health-ingest`), and a connector URL you
-add to Claude.
-
-### 1. Wizard (fastest — one command)
-
-```bash
-npx @almostjacked/health-mcp setup
-```
-
-Interactive: walks you through logging in to Supabase, picking or creating a
-project, applying the schema, deploying both functions, and minting your
-secrets — then prints the connector URL and Shortcut config.
-
-Non-interactive (scripting / CI):
-
-```bash
-npx @almostjacked/health-mcp setup --new --name my-health --region us-east-1 [--org-index N]
-# or, against a project you already have:
-npx @almostjacked/health-mcp setup --existing <project-ref>
-```
-
-`--region` is required when running non-interactively (there's no TTY to
-prompt for it — the interactive wizard defaults the prompt to `us-east-1`).
-`--org-index` picks an organization by number when your account belongs to
-more than one; omit it if you only have one.
-
-Requires Node >= 18 and a free [Supabase](https://supabase.com) account. Any
-step the wizard can't automate prints the exact manual fallback for that
-step (see path 2 below) and keeps going.
-
-### 2. Manual dashboard (~15 min, no terminal)
-
-Point-and-click through the Supabase dashboard yourself — no CLI, no Node.
-Full click-by-click instructions: **[docs/setup-manual.md](docs/setup-manual.md)**.
-
-Short version: create a project → SQL Editor, paste
-[`packages/core/setup.sql`](packages/core/setup.sql) → Edge Functions, create
-`health-mcp` and `health-ingest`, pasting in the
-[release bundles](https://github.com/almostjacked/health-mcp/releases/tag/v0.1.0)
-→ Project Settings → Edge Functions, add `MCP_TOKEN` / `INGEST_KEY` secrets
-(any long random strings) → your connector URL is
-`https://<project-ref>.supabase.co/functions/v1/health-mcp/<MCP_TOKEN>`.
-
-> Supabase's free tier allows 2 active projects, so this fits alongside one
-> other free project you may already have.
-
-### 3. Claude Desktop
-
-Download [`health-mcp.mcpb`](https://github.com/almostjacked/health-mcp/releases/tag/v0.1.0),
-double-click it, and paste in your Supabase project URL and secret key when
-prompted (from either install path above).
-
-Prefer running it yourself instead of the `.mcpb`? It's a plain stdio
-server:
-
-```bash
-claude mcp add health-mcp -e SUPABASE_URL=<url> -e SUPABASE_SECRET_KEY=<key> -- npx -y @almostjacked/health-mcp
-```
-
-## Sync your data: the Shortcut
-
-An iOS Shortcut reads eight metrics out of Apple Health for the last 3 days
-and POSTs them to your `health-ingest` function daily. Generate, install,
-and automate it: **[docs/shortcut.md](docs/shortcut.md)**.
-
-Don't use Shortcuts, or want to backfill older history? The ingest function
-accepts the same `{"entries": [...]}` payload from any HTTP client — script
-your own export against it. A dedicated browser-based `export.zip`
-importer/backfill tool is **coming in 3c**.
 
 ## Tools
 
@@ -124,6 +103,18 @@ importer/backfill tool is **coming in 3c**.
 | get_stats | Min/max/avg plus a rolling-average series for one metric over a date range (daily/weekly/monthly rollup). |
 | query | Escape hatch: run one read-only SQL statement (SELECT or WITH…SELECT) against the schema from get_schema. Writes/DDL rejected; LIMIT 500 enforced. |
 | get_energy_inputs | Daily (date, weight, kcal) entries for days with both a calorie total and a weigh-in — shaped exactly for fitness-tools' `adaptive-tdee`. |
+
+## Architecture
+
+```
+Apple Health --> "Sync Health Data" Shortcut --> your health-ingest function --> your Postgres
+                                                                                      |
+Claude  <-- run_readonly (SELECT-only) <-- your health-mcp connector function <------+
+```
+
+Nothing above touches infrastructure we operate. The two Edge Functions run
+on your Supabase project; the only thing that ever leaves your device is the
+Shortcut's HTTP POST straight to your own project's URL.
 
 ## Privacy Policy
 
@@ -145,11 +136,29 @@ nothing was ever connected to us.
   role it runs as (`health_reader`) is granted `SELECT` only — enforced at
   the Postgres level, not just in application code.
 
+## Other clients
+
+Prefer Claude Desktop, or running the server yourself instead of the hosted
+connector? Both use the same Supabase project from step 1 — just a
+different way of talking to it.
+
+**Claude Desktop:** download
+[`health-mcp.mcpb`](https://github.com/almostjacked/health-mcp/releases/tag/v0.1.0),
+double-click it, and paste in your Supabase project URL and secret key when
+prompted.
+
+**Any stdio MCP client** (Claude Code, etc.):
+
+```bash
+claude mcp add health-mcp -e SUPABASE_URL=<url> -e SUPABASE_SECRET_KEY=<key> -- npx -y @almostjacked/health-mcp
+```
+
 ## Repo layout
 
 ```
 packages/core   @almostjacked/health-mcp-core — tools, ingest/normalization, setup.sql
 apps/mcp        @almostjacked/health-mcp       — stdio server, .mcpb, setup wizard
+web             the setup page (provision + import + Shortcut panels)
 supabase/functions/health-mcp     the read connector (deployed to your project)
 supabase/functions/health-ingest  the write endpoint the Shortcut posts to
 ```

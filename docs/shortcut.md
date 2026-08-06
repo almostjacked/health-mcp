@@ -1,5 +1,19 @@
 # The "Sync Health Data" Shortcut
 
+This is step 3 of the
+[four-step setup](../README.md#get-set-up-four-steps-20-minutes) — the daily
+sync. It assumes you've already got your connector + ingest URL/key from
+[step 1](../README.md#1-create-your-database--connector); if you haven't
+loaded your older history yet, do
+[step 2](../README.md#2-load-your-history) first (it's faster to backfill
+before the daily sync starts layering new rows on top).
+
+> The fastest way to get this Shortcut is the
+> [Shortcut panel](https://almostjacked.github.io/health-mcp/#shortcut) on
+> the setup page — it builds the file entirely in your browser, pre-filled
+> from your session. This doc covers the same generator run from the
+> command line, for anyone who'd rather not use the browser builder.
+
 An iOS Shortcut that reads eight metrics out of Apple Health for the last 3
 days (today, yesterday, the day before — today's data is usually still
 incomplete when the automation runs, so this window lets earlier days catch
@@ -11,8 +25,8 @@ fat percentage.
 ## 1. Generate the .shortcut file
 
 You need Python 3 and your ingest URL + key from whichever
-[install path](../README.md#install) you used (the wizard prints both at
-the end; the manual path derives them in
+[install path](../README.md#1-create-your-database--connector) you used (the
+wizard prints both at the end; the manual path derives them in
 [setup-manual.md](setup-manual.md#5-your-connector-url)).
 
 ```bash
@@ -64,12 +78,20 @@ That's it — health-mcp's `get_sync_status` tool will show `days_since: 1-2`
 for each metric once the automation has run a couple of times; treat
 `3+` as a sign the automation stopped firing.
 
+**Finally: connect Claude.** Open claude.ai → Settings → Connectors → Add
+custom connector, and paste in the connector URL from
+[step 1](../README.md#1-create-your-database--connector). If it fails with
+*"Couldn't register with [name]'s sign-in service"*, that's a transient
+claude.ai hiccup, not a problem with your connector — just try adding it
+again. See [step 4](../README.md#4-connect-claude) in the README.
+
 ## Not using Shortcuts?
 
 The `health-ingest` endpoint just accepts `{"entries": [...]}` — a JSON
 array of `{date, metric, value, unit, source}` objects — over HTTP with the
 same `X-Api-Key` header. Any script, cron job, or export pipeline that can
 produce that shape can write to health-mcp; the Shortcut is simply the
-easiest way to do it from an iPhone without writing code. A browser-based
-`export.zip` importer for one-time backfills of older history is planned
-for release 3c.
+easiest way to do it from an iPhone without writing code. For one-time
+backfills of older history, use the browser-based `export.zip` importer on
+the setup page's [Import panel](https://almostjacked.github.io/health-mcp/#import)
+instead — see [step 2](../README.md#2-load-your-history).
