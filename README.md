@@ -54,6 +54,9 @@ URL and key during import), then turn on the 9 AM daily automation. Full
 click-by-click detail (including what to do if a step doesn't survive the
 iOS import): **[docs/shortcut.md](docs/shortcut.md)**.
 
+
+**Easiest install (Mac-first):** download the signed shortcut on your Mac and double-click it — the two import prompts appear right next to the page's copy buttons, and iCloud syncs the shortcut to your iPhone automatically. (No Mac? Send the file to your phone and answer the prompts there.)
+
 ### 4. Connect Claude
 
 1. Open **claude.ai → Settings → Connectors → Add custom connector**.
