@@ -119,3 +119,22 @@ Health data (Health app → your profile → Export All Health Data) and drop
 first. Skip this and adaptive-TDEE needs ~2 weeks of daily syncs before it
 works; do it and everything works immediately. After that:
 [set up the Shortcut](shortcut.md) for the daily sync, then connect Claude.
+
+
+## Lost your keys?
+
+The ingest URL is never secret — it is always
+`https://<ref>.supabase.co/functions/v1/health-ingest` (your ref is in the
+dashboard URL). The key VALUES (`INGEST_KEY`, `MCP_TOKEN`) cannot be read back
+— Supabase secrets are write-only, and there is no server of ours that could
+remember them. Recovery = rotation:
+
+- **Fastest:** `npx @almostjacked/health-mcp setup --existing <ref>` — mints
+  and sets fresh secrets, prints a new results block (new connector URL; re-add
+  it in claude.ai, and update the Shortcut's key).
+- **No terminal:** use the setup page's "Generate values" button, paste the new
+  values in the dashboard (Edge Functions → Secrets), then rebuild your
+  Shortcut on the page and re-add the connector with the new URL.
+
+Rotating `INGEST_KEY` only affects the Shortcut; rotating `MCP_TOKEN` changes
+the connector URL.
