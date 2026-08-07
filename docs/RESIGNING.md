@@ -14,27 +14,37 @@ a different request shape, etc.), the signed asset in `web/assets/` needs
 to be regenerated and re-signed, or the setup page keeps serving the old
 version forever.
 
-## Automatic path
+## CI signing: verified NOT working — do the manual path below
 
 [`.github/workflows/sign-shortcut.yml`](../.github/workflows/sign-shortcut.yml)
-runs on `macos-latest` (needs Apple's `shortcuts` CLI, which only exists on
-macOS), builds the canonical file, signs it with `shortcuts sign -m anyone`,
-and commits `web/assets/sync-health-data-signed.shortcut` back to `main`.
-It's triggered automatically by pushes touching `web/src/shortcut/**`, and
-can also be run manually: **Actions → Sign Canonical Shortcut → Run
-workflow**.
+runs on `macos-latest`, builds the canonical file, and attempts
+`shortcuts sign -m anyone`. Dispatched once by hand to check
+(2026-08-07, run
+[31193950707](https://github.com/almostjacked/health-mcp/actions/runs/31193950707)):
+it fails every time, at the sign step, with
 
-If that workflow is green, you don't need anything below — this doc is the
-fallback for when it isn't (e.g. `macos-latest` runners stop shipping the
-`shortcuts` CLI, or some future macOS Gatekeeper/signing-identity change
-breaks unattended signing in CI).
+```
+Error: In order to do this, you must be signed into iCloud.
+```
 
-## Manual fallback (one-liner on any Mac)
+GitHub-hosted macOS runners have no Apple ID session, and there's no
+supported way to provision one non-interactively (no headless
+`iCloud sign in` command exists, and stashing real Apple credentials in
+repo secrets to feed an interactive login isn't something this project is
+going to do). So this workflow is `workflow_dispatch`-only — kept as a
+ready-to-go escape hatch in case that ever changes (self-hosted macOS
+runner with an iCloud session already signed in, a future runner image,
+etc.) — but **the day-to-day path is the manual one-liner below**, and
+that's genuinely fine: it's a single command on a Mac you already own,
+takes a few seconds, and only needs to happen when
+`web/src/shortcut/plist.ts`'s action graph changes (rare).
 
-You need a Mac (any recent macOS with the Shortcuts app; no Apple Developer
-account or signed-in state is required — `-m anyone` produces an
-"anyone can run this" trust level, not an identity-backed signature) and
-Node ≥ 18.
+## Manual one-liner (any Mac already signed into iCloud)
+
+You need a Mac (any recent macOS with the Shortcuts app, **signed into
+iCloud** — that's the actual requirement CI is missing; no paid Apple
+Developer account needed, `-m anyone` produces an "anyone can run this"
+trust level, not an identity-backed signature) and Node ≥ 18.
 
 ```bash
 git clone https://github.com/almostjacked/health-mcp.git

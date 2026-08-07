@@ -75,13 +75,26 @@ export function getConfig(): SetupConfig {
 /** Merges `partial` into the persisted config and returns the merged result.
  * Only the known `SetupConfig` keys are ever written — passing anything else
  * (e.g. by mistake) is silently dropped by `readStorage`'s allowlist on the
- * next read, but we also filter here so the stored JSON itself stays clean. */
+ * next read, but we also filter here so the stored JSON itself stays clean.
+ *
+ * Skips the write and `notifyChange()` entirely when the merge wouldn't
+ * actually change anything. This isn't just an optimization: a
+ * CONFIG_CHANGED_EVENT listener that reacts by calling setConfig again with
+ * the same values it just received (a legitimate pattern — e.g. a panel
+ * persisting the current field values whenever they might have drifted) is a
+ * synchronous infinite loop if every call unconditionally re-notifies, since
+ * each notify re-invokes every listener including that one. Idempotent
+ * writes must be true no-ops for CONFIG_CHANGED_EVENT to be safe to react to
+ * by calling setConfig. */
 export function setConfig(partial: Partial<SetupConfig>): SetupConfig {
-	const next = { ...readStorage() };
+	const current = readStorage();
+	const next = { ...current };
 	for (const key of CONFIG_KEYS) {
 		const value = partial[key];
 		if (value !== undefined) next[key] = value;
 	}
+	const changed = CONFIG_KEYS.some((key) => current[key] !== next[key]);
+	if (!changed) return next;
 	sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 	notifyChange();
 	return next;

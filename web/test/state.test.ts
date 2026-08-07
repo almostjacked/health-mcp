@@ -119,6 +119,29 @@ describe("state", () => {
 		expect(raw).not.toContain(secret);
 	});
 
+	it("setConfig is a true no-op (no sessionStorage write) when the merge wouldn't change anything", async () => {
+		// Regression test: a CONFIG_CHANGED_EVENT listener that reacts to a
+		// config change by calling setConfig again with the same values (a
+		// legitimate pattern — see web/src/panels/shortcut.ts's credentialFields)
+		// is a synchronous infinite loop unless idempotent writes skip
+		// notifyChange entirely. This can't exercise the event round-trip itself
+		// (this suite's vitest environment has no `window` — see ../vitest.config.ts
+		// — so notifyChange's dispatchEvent is a no-op here regardless), but it
+		// locks in the half of the fix that IS testable without a DOM: identical
+		// input must never re-write storage.
+		const { setConfig } = await loadState();
+		const setItemSpy = vi.spyOn(storage, "setItem");
+
+		setConfig({ ref: "r1", ingestUrl: "https://r1.supabase.co/functions/v1/health-ingest" });
+		expect(setItemSpy).toHaveBeenCalledTimes(1);
+
+		setConfig({ ref: "r1", ingestUrl: "https://r1.supabase.co/functions/v1/health-ingest" });
+		expect(setItemSpy).toHaveBeenCalledTimes(1); // still 1 — the second call changed nothing
+
+		setConfig({ ref: "r2" });
+		expect(setItemSpy).toHaveBeenCalledTimes(2); // an actual change does write
+	});
+
 	it("setConfig passed an access-token-shaped key (not part of SetupConfig) is dropped, not persisted", async () => {
 		const { setConfig, getConfig } = await loadState();
 		// @ts-expect-error deliberately passing a key outside SetupConfig's shape

@@ -378,3 +378,49 @@ table.summary th {
   flex-direction: column;
   gap: 0.5rem;
 }
+
+.install-steps .code-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  overflow-x: auto;
+  margin: 0.4rem 0;
+}
+
+.btn.btn-disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.advanced-section {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.advanced-section summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.advanced-section summary:hover {
+  color: var(--text);
+}
+
+.advanced-body {
+  margin-top: 1rem;
+}
+
+.field .btn-row {
+  margin: 0;
+}
+
+.field .btn-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}

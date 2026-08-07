@@ -7,19 +7,19 @@ name: Sign Canonical Shortcut
 # only exists on macOS, so this can't run on the ubuntu runner the rest of
 # CI uses.
 #
-# Triggered on pushes that touch the action-graph source (so a shortcut
-# change gets re-signed automatically) and manually via workflow_dispatch.
-# The push-path filter targets web/src/shortcut/** only — the commit this
-# workflow makes touches web/assets/**, which is NOT in that filter, so it
-# can't re-trigger itself. Deliberately no "[skip ci]" in the commit
-# message: CI and the Pages workflow should still run on the resulting
-# commit (Pages needs to redeploy with the new signed asset).
+# VERIFIED FAILING on GitHub-hosted macos-latest runners (run 31193950707,
+# 2026-08-07): `shortcuts sign` exits 1 with "Error: In order to do this,
+# you must be signed into iCloud." — hosted runners have no Apple ID
+# session and there's no way to provision one non-interactively. So this
+# workflow is workflow_dispatch-only (not wired to push) — it's a
+# ready-to-go escape hatch for if that ever changes (a future runner image,
+# a self-hosted macOS runner with an iCloud session, etc.), not something
+# expected to succeed today. The real path for re-signing after a
+# plist.ts change is the manual one-liner in docs/RESIGNING.md, run on any
+# macOS machine that's already signed into iCloud (any normal Mac
+# qualifies — no paid developer account needed for -m anyone).
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "web/src/shortcut/**"
 
 permissions:
   contents: write

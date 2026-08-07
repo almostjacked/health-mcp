@@ -1,21 +1,25 @@
 // Shortcut panel: DOM assembly + event wiring only. The action graph and
 // plist byte format live in ../shortcut/plist.ts, golden-tested against
-// scripts/generate_shortcut.py — this file just collects the ingest URL/key,
-// triggers a download, and walks through installing + automating the result.
+// scripts/generate_shortcut.py — this file wires the primary
+// download-the-signed-file flow plus a collapsed "Advanced" per-user
+// generator fallback.
+//
+// Primary flow (no per-user signing!): ONE canonical shortcut, signed once
+// per release (docs/RESIGNING.md — CI signing is unavailable, verified;
+// the maintainer runs `shortcuts sign -m anyone` by hand after any
+// plist.ts change and commits web/assets/sync-health-data-signed.shortcut).
+// Every user downloads the same signed bytes; iOS's Import Questions
+// mechanism prompts for the ingest URL/key at import time without
+// invalidating the signature. Users just paste in the two values shown
+// below when prompted — no Mac, no Terminal, no signing step required.
 import { buildShortcut } from "../shortcut/plist.js";
 import { getConfig, setConfig, CONFIG_CHANGED_EVENT } from "../state.js";
 
 const SHORTCUT_DOCS_URL = "https://github.com/almostjacked/health-mcp/blob/main/docs/shortcut.md";
-const SHORTCUT_FILE_NAME = "sync-health-data.shortcut";
-
-// Task 6 feasibility gate. iOS only accepts *unsigned* shortcuts (which is
-// all a browser can produce — signing needs Apple's `shortcuts` CLI on a
-// Mac) when the device's security setting allows it, and that's unverified
-// until Task 6 tests an on-device import of a browser-generated file. If
-// that import fails, flip this to false to ship the proven python-script
-// path instead — both code paths are implemented below and ship together;
-// this flag just picks which one renders.
-const BROWSER_SHORTCUT_ENABLED = true;
+const RESIGNING_DOCS_URL = "https://github.com/almostjacked/health-mcp/blob/main/docs/RESIGNING.md";
+const SIGNED_ASSET_PATH = "./sync-health-data-signed.shortcut";
+const SIGNED_ASSET_FILENAME = "sync-health-data-signed.shortcut";
+const CUSTOM_SHORTCUT_FILE_NAME = "sync-health-data.shortcut";
 
 function el<K extends keyof HTMLElementTagNameMap>(
 	tag: K,
@@ -31,7 +35,72 @@ function el<K extends keyof HTMLElementTagNameMap>(
 	return node;
 }
 
-function installSteps(): HTMLOListElement {
+/** Copy-to-clipboard button — same pattern as ../panels/provision.ts's
+ * copyButton, duplicated locally to keep these panels independently
+ * readable (neither exports across panel files). */
+function copyButton(getText: () => string, label = "Copy"): HTMLButtonElement {
+	const btn = el("button", { type: "button", class: "btn secondary" }, [label]) as HTMLButtonElement;
+	btn.addEventListener("click", () => {
+		const text = getText();
+		if (!navigator.clipboard?.writeText) {
+			btn.textContent = "Copy failed — select and copy manually";
+			return;
+		}
+		navigator.clipboard
+			.writeText(text)
+			.then(() => {
+				btn.textContent = "Copied!";
+				setTimeout(() => {
+					btn.textContent = label;
+				}, 2000);
+			})
+			.catch(() => {
+				btn.textContent = "Copy failed — select and copy manually";
+			});
+	});
+	return btn;
+}
+
+/** Primary-path install steps: download → AirDrop/Safari → import → answer
+ * the two Import Questions prompts → grant Health permissions → run once.
+ * No signing step — the file is already signed. */
+function primaryInstallSteps(): HTMLOListElement {
+	return el("ol", { class: "install-steps" }, [
+		el("li", {}, [
+			"Get the downloaded ",
+			el("code", {}, [SIGNED_ASSET_FILENAME]),
+			" file onto your iPhone — AirDrop it from a Mac, or upload it somewhere and open the link in Safari on the phone.",
+		]),
+		el("li", {}, ["Opening it launches the Shortcuts app's import screen. Tap ", el("strong", {}, ["Add Shortcut"]), "."]),
+		el("li", {}, [
+			"iOS will prompt you for two values during import — ",
+			el("strong", {}, ["Paste your ingest URL"]),
+			" and ",
+			el("strong", {}, ["Paste your ingest key (from the setup page)"]),
+			". Paste in the values shown above (use the Copy buttons). This is what lets one signed file work for every " +
+				"user without a separate signing step.",
+		]),
+		el("li", {}, [
+			"The first time it runs, iOS will ask for permission to read each Health metric (Dietary Calories, Protein, " +
+				"Carbohydrates, Total Fat, Water, Sodium, Weight, Body Fat Percentage). Allow all of them.",
+		]),
+		el("li", {}, [
+			"Run it once manually (tap the shortcut in the Shortcuts app) to confirm it works — each day's POST response " +
+				"is shown on screen. You should see a response indicating rows were inserted/updated, not an error.",
+		]),
+		el("li", {}, [
+			"If a Health metric picker chip (e.g. \"Dietary Calories\") imported blank or wrong, tap that action and " +
+				"reselect the correct type. Likewise, if the ",
+			el("strong", {}, ["Repeat Index"]),
+			" chip inside the date-subtraction step imported blank, tap it and choose Repeat Index from the magic-variable list.",
+		]),
+	]);
+}
+
+/** Advanced-path install steps: kept verbatim from the original per-user
+ * flow, including the signing step users no longer need for the primary
+ * path but which the custom-build path (Advanced section) still requires. */
+function advancedInstallSteps(): HTMLOListElement {
 	return el("ol", { class: "install-steps" }, [
 		el("li", {}, [
 			el("strong", {}, ["Sign the file (required — iOS refuses unsigned shortcuts). "]),
@@ -126,17 +195,28 @@ function connectClaudeNudge(): HTMLParagraphElement {
 	return nudge;
 }
 
-function mountBrowserBuilder(container: HTMLElement): void {
+/** URL/key fields shared by the primary and advanced flows — prefilled from
+ * state, editable, with copy buttons. `onChange` is called (trimmed values)
+ * on every input so each mount point can decide what to persist/enable. */
+function credentialFields(
+	idPrefix: string,
+	onChange: (url: string, key: string) => void,
+): { fields: HTMLDivElement; urlInput: HTMLInputElement; keyInput: HTMLInputElement } {
 	const config = getConfig();
-
 	const urlInput = el("input", {
 		type: "text",
-		id: "sc-url",
+		id: `${idPrefix}-url`,
 		placeholder: "https://<ref>.supabase.co/functions/v1/health-ingest",
 	}) as HTMLInputElement;
-	const keyInput = el("input", { type: "password", id: "sc-key", autocomplete: "off", placeholder: "INGEST_KEY" }) as HTMLInputElement;
+	const keyInput = el("input", {
+		type: "password",
+		id: `${idPrefix}-key`,
+		autocomplete: "off",
+		placeholder: "INGEST_KEY",
+	}) as HTMLInputElement;
 	if (config.ingestUrl) urlInput.value = config.ingestUrl;
 	if (config.ingestKey) keyInput.value = config.ingestKey;
+
 	// Only auto-refresh these fields from a later Provision/Import run if the
 	// user hasn't typed something different in the meantime (same pattern as
 	// the Import panel).
@@ -152,37 +232,70 @@ function mountBrowserBuilder(container: HTMLElement): void {
 			keyInput.value = latest.ingestKey;
 			syncedKey = latest.ingestKey;
 		}
+		// Deliberately does NOT call onChange here: these values just came FROM
+		// config (that's what CONFIG_CHANGED_EVENT means), so re-persisting them
+		// would be a no-op write that re-fires the same event — setConfig always
+		// calls notifyChange unconditionally (see ../state.ts), so a naive
+		// onChange-on-every-sync here is a synchronous infinite loop, not a
+		// no-op (verified: it throws "Maximum call stack size exceeded"). Only
+		// real user edits (the "input" listeners below) should ever persist.
 	});
 
+	const fire = (): void => onChange(urlInput.value.trim(), keyInput.value.trim());
+	urlInput.addEventListener("input", fire);
+	keyInput.addEventListener("input", fire);
+
 	const fields = el("div", {}, [
-		el("div", { class: "field" }, [el("label", { for: "sc-url" }, ["Ingest URL"]), urlInput]),
-		el("div", { class: "field" }, [el("label", { for: "sc-key" }, ["Ingest key"]), keyInput]),
+		el("div", { class: "field" }, [
+			el("label", { for: `${idPrefix}-url` }, ["Ingest URL"]),
+			el("div", { class: "btn-row" }, [urlInput, copyButton(() => urlInput.value, "Copy")]),
+		]),
+		el("div", { class: "field" }, [
+			el("label", { for: `${idPrefix}-key` }, ["Ingest key"]),
+			el("div", { class: "btn-row" }, [keyInput, copyButton(() => keyInput.value, "Copy")]),
+		]),
+	]) as HTMLDivElement;
+
+	return { fields, urlInput, keyInput };
+}
+
+/** HEAD-checks that the signed canonical asset actually shipped with this
+ * build — web/scripts/build.mjs tolerates web/assets/ being empty, so a
+ * build made before the maintainer last ran the resigning one-liner (see
+ * docs/RESIGNING.md) won't have it. Never throws: any failure (network,
+ * non-2xx, method not allowed) is treated as "missing" so the download
+ * button degrades to a clear explanation instead of a broken click. */
+async function signedAssetAvailable(): Promise<boolean> {
+	try {
+		const res = await fetch(SIGNED_ASSET_PATH, { method: "HEAD" });
+		return res.ok;
+	} catch {
+		return false;
+	}
+}
+
+function mountAdvancedSection(container: HTMLElement): void {
+	const details = el("details", { class: "advanced-section" }, []) as HTMLDetailsElement;
+	details.append(el("summary", {}, ["Advanced: bake values into a custom build"]));
+
+	const body = el("div", { class: "advanced-body" }, [
+		el("p", {}, [
+			"Prefer a shortcut with your URL/key baked in (no import prompts) instead of the signed canonical file above? " +
+				"Build one here — same action graph, byte-identical in structure to the ",
+			el("a", { href: SHORTCUT_DOCS_URL, target: "_blank", rel: "noreferrer" }, ["python generator"]),
+			" — but ",
+			el("strong", {}, ["you'll need to sign it yourself"]),
+			" (a Mac + one Terminal command; iOS refuses unsigned shortcuts). If you'd rather skip that, use the " +
+				"primary download above instead.",
+		]),
 	]);
 
+	const { fields, urlInput, keyInput } = credentialFields("adv-sc", () => {});
 	const generateBtn = el("button", { type: "button", class: "btn" }, ["Generate Shortcut"]) as HTMLButtonElement;
 	const errorText = el("p", { class: "error-text" }, []) as HTMLParagraphElement;
 	errorText.style.display = "none";
 	const successText = el("p", { class: "hint" }, []) as HTMLParagraphElement;
 	successText.style.display = "none";
-
-	container.append(
-		el("p", {}, [
-			"Reads eight metrics (calories, protein, carbs, fat, water, sodium, weight, body fat %) out of Apple Health " +
-				"for the last 3 days and POSTs one JSON body per day to your ingest endpoint — built entirely in your " +
-				"browser, byte-identical in structure to the ",
-			el("a", { href: SHORTCUT_DOCS_URL, target: "_blank", rel: "noreferrer" }, ["python generator"]),
-			".",
-		]),
-		fields,
-		el("div", { class: "btn-row" }, [generateBtn]),
-		errorText,
-		successText,
-		el("h3", {}, ["1. Install it on your iPhone"]),
-		installSteps(),
-		el("h3", {}, ["2. Turn on the daily automation"]),
-		automationSteps(),
-		connectClaudeNudge(),
-	);
 
 	generateBtn.addEventListener("click", () => {
 		errorText.style.display = "none";
@@ -198,53 +311,81 @@ function mountBrowserBuilder(container: HTMLElement): void {
 			const bytes = buildShortcut(url, key);
 			const blob = new Blob([bytes], { type: "application/octet-stream" });
 			const objectUrl = URL.createObjectURL(blob);
-			const link = el("a", { href: objectUrl, download: SHORTCUT_FILE_NAME });
+			const link = el("a", { href: objectUrl, download: CUSTOM_SHORTCUT_FILE_NAME });
 			document.body.append(link);
 			link.click();
 			link.remove();
 			URL.revokeObjectURL(objectUrl);
 
 			setConfig({ ingestUrl: url, ingestKey: key });
-			successText.textContent = `Downloaded ${SHORTCUT_FILE_NAME} — follow the install steps below.`;
+			successText.textContent = `Downloaded ${CUSTOM_SHORTCUT_FILE_NAME} — follow the install steps below (this copy still needs signing).`;
 			successText.style.display = "";
 		} catch (e) {
 			errorText.textContent = e instanceof Error ? e.message : String(e);
 			errorText.style.display = "";
 		}
 	});
-}
 
-function mountPythonFallback(container: HTMLElement): void {
-	container.append(
-		el("p", {}, [
-			"Generate the Shortcut with the bundled python script — follow ",
-			el("a", { href: SHORTCUT_DOCS_URL, target: "_blank", rel: "noreferrer" }, ["docs/shortcut.md"]),
-			".",
-		]),
-	);
-
-	const config = getConfig();
-	if (config.ingestUrl) {
-		container.append(
-			el("p", { class: "hint" }, [
-				"Once you're following the doc: your ingest URL is ",
-				el("code", {}, [config.ingestUrl]),
-				" — use the ingest key from the Import panel above as the Shortcut's header value.",
-			]),
-		);
-	}
-
-	container.append(
+	body.append(
+		fields,
+		el("div", { class: "btn-row" }, [generateBtn]),
+		errorText,
+		successText,
 		el("h3", {}, ["Install it on your iPhone"]),
-		installSteps(),
-		el("h3", {}, ["Turn on the daily automation"]),
-		automationSteps(),
-		connectClaudeNudge(),
+		advancedInstallSteps(),
 	);
+	details.append(body);
+	container.append(details);
 }
 
 export function mountShortcutPanel(container: HTMLElement): void {
 	container.textContent = "";
-	if (BROWSER_SHORTCUT_ENABLED) mountBrowserBuilder(container);
-	else mountPythonFallback(container);
+
+	const { fields } = credentialFields("sc", (url, key) => {
+		if (url || key) setConfig({ ...(url ? { ingestUrl: url } : {}), ...(key ? { ingestKey: key } : {}) });
+	});
+
+	const downloadBtn = el("a", { href: SIGNED_ASSET_PATH, download: SIGNED_ASSET_FILENAME, class: "btn" }, [
+		"Download the shortcut",
+	]) as HTMLAnchorElement;
+	const assetNotice = el("p", { class: "error-text" }, []) as HTMLParagraphElement;
+	assetNotice.style.display = "none";
+
+	container.append(
+		el("p", {}, [
+			"One shortcut, signed once — download it, then answer two prompts during import (your ingest URL and key). " +
+				"No signing step for you: iOS's Import Questions feature fills those two values in without invalidating " +
+				"Apple's signature. Reads eight metrics (calories, protein, carbs, fat, water, sodium, weight, body fat %) " +
+				"out of Apple Health for the last 3 days and POSTs one JSON body per day to your ingest endpoint.",
+		]),
+		fields,
+		el("p", { class: "hint" }, [
+			"iOS will ask for these two values when you import — paste them into the prompts (use the Copy buttons above).",
+		]),
+		el("div", { class: "btn-row" }, [downloadBtn]),
+		assetNotice,
+		el("h3", {}, ["1. Install it on your iPhone"]),
+		primaryInstallSteps(),
+		el("h3", {}, ["2. Turn on the daily automation"]),
+		automationSteps(),
+		connectClaudeNudge(),
+	);
+
+	mountAdvancedSection(container);
+
+	void signedAssetAvailable().then((ok) => {
+		if (ok) return;
+		downloadBtn.removeAttribute("href");
+		downloadBtn.setAttribute("aria-disabled", "true");
+		downloadBtn.classList.add("btn-disabled");
+		downloadBtn.addEventListener("click", (e) => e.preventDefault());
+		assetNotice.textContent = "";
+		assetNotice.append(
+			"The pre-signed shortcut isn't available on this build yet — use the \"Advanced: bake values into a custom " +
+				"build\" section below, or (maintainer) run the resigning steps in ",
+			el("a", { href: RESIGNING_DOCS_URL, target: "_blank", rel: "noreferrer" }, ["docs/RESIGNING.md"]),
+			".",
+		);
+		assetNotice.style.display = "";
+	});
 }

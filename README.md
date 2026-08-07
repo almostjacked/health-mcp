@@ -48,8 +48,9 @@ works immediately.
 ### 3. Set up the daily sync
 
 The **[Shortcut panel](https://almostjacked.github.io/health-mcp/#shortcut)**
-builds a personal iOS Shortcut wired to your ingest URL and key — download
-it, install it on your iPhone, then turn on the 9 AM daily automation. Full
+has one download button — no signing step, no Terminal. Download the
+shortcut, install it on your iPhone (iOS asks you to paste in your ingest
+URL and key during import), then turn on the 9 AM daily automation. Full
 click-by-click detail (including what to do if a step doesn't survive the
 iOS import): **[docs/shortcut.md](docs/shortcut.md)**.
 
