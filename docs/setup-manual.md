@@ -58,8 +58,8 @@ For **each** of the two functions below:
 
 | Function name | Paste the contents of |
 |---|---|
-| `health-mcp` | [health-mcp.ts](https://github.com/almostjacked/health-mcp/releases/download/v0.1.0/health-mcp.ts) |
-| `health-ingest` | [health-ingest.ts](https://github.com/almostjacked/health-mcp/releases/download/v0.1.0/health-ingest.ts) |
+| `health-mcp` | [health-mcp.ts](https://almostjacked.github.io/health-mcp/functions/health-mcp.ts) |
+| `health-ingest` | [health-ingest.ts](https://almostjacked.github.io/health-mcp/functions/health-ingest.ts) |
 
 (Both files are single-file bundles built from this repo's
 [`supabase/functions/`](../supabase/functions) sources — no imports to
