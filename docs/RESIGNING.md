@@ -74,3 +74,9 @@ into a custom build" section, which reuses the original per-user generator
 `scripts/generate_shortcut.py`) and walks through signing that file by
 hand — the same one-liner as above, just with a per-user file instead of
 the canonical one.
+
+After signing, refresh the drift marker (CI enforces it):
+
+```bash
+shasum -a 256 build/sync-health-data.shortcut | cut -d' ' -f1 > web/assets/canonical.sha256
+```

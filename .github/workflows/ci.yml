@@ -30,6 +30,13 @@ jobs:
 
       - run: pnpm -r typecheck
       - run: pnpm -r test
+      # Signed-shortcut drift guard: the committed signed asset was minted from
+      # a canonical build whose (unsigned) sha256 is committed alongside it.
+      # If plist.ts changes without a re-sign (docs/RESIGNING.md), fail here.
+      - run: |
+          pnpm build:shortcut
+          echo "$(cat web/assets/canonical.sha256)  build/sync-health-data.shortcut" | shasum -a 256 -c - \
+            || { echo "::error::canonical shortcut changed but the signed asset was not re-signed — see docs/RESIGNING.md"; exit 1; }
 
       # Exercises the setup wizard's function-bundling pipeline end to end:
       # bundle:functions -> apps/mcp build (tsc + copy-functions.mjs) -> the
