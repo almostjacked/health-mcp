@@ -25,14 +25,14 @@ describe("postEntries", () => {
 			json: async () => ({ inserted: 10, updated: 2, skipped: 1, rejected: [] }),
 		}));
 		const progress: Array<[number, number, number]> = [];
-		const totals = await postEntries(entries, "https://example.com", "test-key", (sent, total, written) => {
+		const totals = await postEntries(entries, "https://example.com/functions/v1/health-ingest", "test-key", (sent, total, written) => {
 			progress.push([sent, total, written]);
 		});
 
 		expect(fetchMock).toHaveBeenCalledTimes(3);
 		for (const call of fetchMock.mock.calls) {
 			const [url, init] = call as [string, RequestInit];
-			expect(url).toBe("https://example.com/ingest");
+			expect(url).toBe("https://example.com/functions/v1/health-ingest");
 			expect((init.headers as Record<string, string>)["X-Api-Key"]).toBe("test-key");
 			const body = JSON.parse(init.body as string);
 			expect(body.entries.length).toBeLessThanOrEqual(500);
@@ -62,14 +62,14 @@ describe("postEntries", () => {
 			.rejects.toThrow(/batch 1/i);
 	});
 
-	it("strips trailing slash from ingestUrl", async () => {
+	it("posts to the URL exactly as given (modulo trailing slash) — no path appending", async () => {
 		fetchMock.mockImplementation(async () => ({
 			ok: true,
 			status: 200,
 			json: async () => ({ inserted: 0, updated: 0, skipped: 0, rejected: [] }),
 		}));
-		await postEntries([entry(1)], "https://example.com/", "k", () => {});
+		await postEntries([entry(1)], "https://p.supabase.co/functions/v1/health-ingest/", "k", () => {});
 		const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-		expect(url).toBe("https://example.com/ingest");
+		expect(url).toBe("https://p.supabase.co/functions/v1/health-ingest");
 	});
 });
