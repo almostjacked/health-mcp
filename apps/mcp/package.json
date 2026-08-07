@@ -1,6 +1,6 @@
 {
   "name": "@almostjacked/health-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Your health data (weight, macros, weigh-ins) as MCP tools — in your own Supabase, zero custody.",
   "type": "module",
   "bin": {
