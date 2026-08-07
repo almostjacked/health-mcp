@@ -61,24 +61,31 @@ function copyButton(getText: () => string, label = "Copy"): HTMLButtonElement {
 	return btn;
 }
 
-/** Primary-path install steps: download → AirDrop/Safari → import → answer
- * the two Import Questions prompts → grant Health permissions → run once.
+/** Primary-path install steps — Mac-first (easiest, field-tested): open the
+ * signed file in Shortcuts on the Mac, answer the two prompts with the copy
+ * buttons on this very page, and iCloud sync delivers it to the iPhone.
  * No signing step — the file is already signed. */
 function primaryInstallSteps(): HTMLOListElement {
 	return el("ol", { class: "install-steps" }, [
 		el("li", {}, [
-			"Get the downloaded ",
+			el("strong", {}, ["On this Mac"]),
+			": open the downloaded ",
 			el("code", {}, [SIGNED_ASSET_FILENAME]),
-			" file onto your iPhone — AirDrop it from a Mac, or upload it somewhere and open the link in Safari on the phone.",
+			" (double-click) — it opens in the Shortcuts app's import screen. Click ",
+			el("strong", {}, ["Add Shortcut"]),
+			".",
 		]),
-		el("li", {}, ["Opening it launches the Shortcuts app's import screen. Tap ", el("strong", {}, ["Add Shortcut"]), "."]),
 		el("li", {}, [
-			"iOS will prompt you for two values during import — ",
-			el("strong", {}, ["Paste your ingest URL"]),
+			"You'll be prompted for two values during import — ",
+			el("strong", {}, ["your ingest URL"]),
 			" and ",
-			el("strong", {}, ["Paste your ingest key (from the setup page)"]),
-			". Paste in the values shown above (use the Copy buttons). This is what lets one signed file work for every " +
-				"user without a separate signing step.",
+			el("strong", {}, ["your ingest key"]),
+			". Copy each from this page (buttons above) and paste — easiest done here on the Mac, side by side.",
+		]),
+		el("li", {}, [
+			"Wait a moment: iCloud syncs the shortcut to your iPhone automatically (Shortcuts app, same Apple ID). ",
+			"No Mac? Backup path: get the file to the phone (AirDrop/Safari) and paste the two values into the prompts " +
+				"there — opening this page on the phone makes copying easier, though you'll need to re-enter your URL/key fields.",
 		]),
 		el("li", {}, [
 			"The first time it runs, iOS will ask for permission to read each Health metric (Dietary Calories, Protein, " +
