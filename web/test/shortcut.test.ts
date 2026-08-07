@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { buildShortcut, buildWorkflow, serializePlist } from "../src/shortcut/plist.js";
+import {
+	buildShortcut,
+	buildWorkflow,
+	serializePlist,
+	buildCanonicalShortcut,
+	buildCanonicalWorkflow,
+	type PlistDict,
+} from "../src/shortcut/plist.js";
 
 const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/golden.shortcut", import.meta.url));
 const DUMMY_URL = "https://example.test/functions/v1/health-ingest";
@@ -55,6 +62,100 @@ describe("buildShortcut (real entry point)", () => {
 	it("uses a fresh random UUID sequence on every call (never matches a fixed golden run)", () => {
 		const a = new TextDecoder().decode(buildShortcut(DUMMY_URL, DUMMY_KEY));
 		const b = new TextDecoder().decode(buildShortcut(DUMMY_URL, DUMMY_KEY));
+		expect(a).not.toBe(b);
+	});
+});
+
+describe("buildCanonicalWorkflow / buildCanonicalShortcut (signed-once, Import Questions)", () => {
+	it("carries no user values — only the documented placeholders", () => {
+		const bytes = buildCanonicalShortcut();
+		const text = new TextDecoder().decode(bytes);
+
+		expect(text).toContain("PASTE-YOUR-INGEST-KEY");
+		expect(text).toContain("https://YOUR-REF.supabase.co/functions/v1/health-ingest");
+		expect(text).not.toContain(DUMMY_URL);
+		expect(text).not.toContain(DUMMY_KEY);
+	});
+
+	it("moves the ingest key out of WFHTTPHeaders into its own Text action, referenced by magic variable", () => {
+		const workflow = buildCanonicalWorkflow(deterministicUuidGen());
+		const actions = workflow.WFWorkflowActions as PlistDict[];
+
+		const keyAction = actions[0];
+		expect(keyAction.WFWorkflowActionIdentifier).toBe("is.workflow.actions.gettext");
+		const keyActionParams = keyAction.WFWorkflowActionParameters as PlistDict;
+		expect(keyActionParams.UUID).toBeTypeOf("string");
+		const keyActionUuid = keyActionParams.UUID as string;
+
+		const downloadIndex = actions.findIndex(
+			(a) => (a.WFWorkflowActionIdentifier as string) === "is.workflow.actions.downloadurl",
+		);
+		expect(downloadIndex).toBeGreaterThan(0);
+		const downloadParams = actions[downloadIndex].WFWorkflowActionParameters as PlistDict;
+		expect(downloadParams.WFURL).toBe("https://YOUR-REF.supabase.co/functions/v1/health-ingest");
+
+		const headers = downloadParams.WFHTTPHeaders as PlistDict;
+		const headerItems = ((headers.Value as PlistDict).WFDictionaryFieldValueItems as PlistDict[]) ?? [];
+		const apiKeyItem = headerItems.find((item) => {
+			const keyToken = item.WFKey as PlistDict;
+			return (keyToken.Value as PlistDict).string === "X-Api-Key";
+		});
+		expect(apiKeyItem).toBeDefined();
+
+		// The header's WFValue must reference the Text action's output — not
+		// contain a literal key string anywhere in its serialized form.
+		const valueToken = (apiKeyItem as PlistDict).WFValue as PlistDict;
+		const valueTokenValue = valueToken.Value as PlistDict;
+		expect(valueTokenValue.string).not.toContain(DUMMY_KEY);
+		const attachments = valueTokenValue.attachmentsByRange as PlistDict;
+		expect(attachments).toBeDefined();
+		const attachmentValues = Object.values(attachments);
+		expect(attachmentValues.length).toBe(1);
+		expect((attachmentValues[0] as PlistDict).OutputUUID).toBe(keyActionUuid);
+		expect((attachmentValues[0] as PlistDict).OutputName).toBe("Text");
+
+		// Belt and suspenders: the fully serialized plist never contains the
+		// literal string "X-Api-Key" *value* — i.e. no WFKey/WFValue pair
+		// where the value string is a bare key rather than a variable ref.
+		const serialized = new TextDecoder().decode(serializePlist(workflow));
+		expect(serialized).not.toContain(DUMMY_KEY);
+	});
+
+	it("declares WFWorkflowImportQuestions targeting the Text action's key field and the download action's URL field", () => {
+		const workflow = buildCanonicalWorkflow(deterministicUuidGen());
+		const actions = workflow.WFWorkflowActions as PlistDict[];
+		const questions = workflow.WFWorkflowImportQuestions as PlistDict[];
+		expect(questions.length).toBe(2);
+
+		const keyQuestion = questions.find((q) => q.ParameterKey === "WFTextActionText");
+		expect(keyQuestion).toBeDefined();
+		expect(keyQuestion?.Category).toBe("Parameter");
+		expect(keyQuestion?.ActionIndex).toBe(0);
+		expect(actions[keyQuestion?.ActionIndex as number].WFWorkflowActionIdentifier).toBe(
+			"is.workflow.actions.gettext",
+		);
+
+		const urlQuestion = questions.find((q) => q.ParameterKey === "WFURL");
+		expect(urlQuestion).toBeDefined();
+		expect(urlQuestion?.Category).toBe("Parameter");
+		const urlActionIndex = urlQuestion?.ActionIndex as number;
+		expect(actions[urlActionIndex].WFWorkflowActionIdentifier).toBe("is.workflow.actions.downloadurl");
+		expect(typeof urlQuestion?.Text).toBe("string");
+		expect(typeof keyQuestion?.Text).toBe("string");
+	});
+
+	it("is a well-formed, parseable XML plist, structurally the same shape as the per-user shortcut", () => {
+		const bytes = buildCanonicalShortcut();
+		const text = new TextDecoder().decode(bytes);
+		expect(text.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+		expect(text).toContain("<key>WFWorkflowName</key>");
+		expect(text).toContain("<string>Sync Health Data</string>");
+		expect(text).toContain("<key>WFWorkflowImportQuestions</key>");
+	});
+
+	it("uses a fresh random UUID sequence on every call", () => {
+		const a = new TextDecoder().decode(buildCanonicalShortcut());
+		const b = new TextDecoder().decode(buildCanonicalShortcut());
 		expect(a).not.toBe(b);
 	});
 });

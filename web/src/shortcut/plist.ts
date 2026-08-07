@@ -234,6 +234,196 @@ export function buildWorkflow(url: string, key: string, uuidGen: () => string): 
 	};
 }
 
+// --- Canonical (signed-once) shortcut -------------------------------------
+//
+// The per-user builder above bakes a specific URL/key into the plist, which
+// means every download needs its own macOS `shortcuts sign` pass (iOS
+// refuses unsigned imports — verified on-device). The canonical builder
+// instead produces ONE shortcut, with placeholders for the two secrets,
+// signed once at release time. iOS's "Import Questions" mechanism
+// (WFWorkflowImportQuestions) prompts the user to fill those placeholders in
+// at import time without touching the signature — the signature covers the
+// action graph, not the parameter values.
+//
+// Reuses every helper above (act/tokenString/attachment/actionOutput/
+// healthFilter/METRICS) so the action graph itself only has two differences
+// from buildWorkflow's per-user graph:
+//   (a) the ingest key can't be a literal string in WFHTTPHeaders anymore —
+//       nothing in the signed file may vary per user — so it moves into its
+//       own is.workflow.actions.gettext action near the top, and the
+//       headers dict references that action's "Text" output as a magic
+//       variable instead.
+//   (b) the download action's WFURL is a placeholder string instead of a
+//       real URL.
+// Both placeholders are named as WFWorkflowImportQuestions targets so iOS
+// prompts for real values on import.
+
+const INGEST_KEY_PLACEHOLDER = "PASTE-YOUR-INGEST-KEY";
+const INGEST_URL_PLACEHOLDER = "https://YOUR-REF.supabase.co/functions/v1/health-ingest";
+
+/** Builds the canonical workflow dict — same action graph as buildWorkflow,
+ * except the ingest key lives in its own Text action (referenced by magic
+ * variable from the headers dict) and the download URL is a placeholder.
+ * `uuidGen` is exposed the same way buildWorkflow's is, for deterministic
+ * testing; buildCanonicalShortcut below supplies crypto.randomUUID. */
+export function buildCanonicalWorkflow(uuidGen: () => string): PlistDict {
+	const keyTextUuid = uuidGen();
+	const loopGroup = uuidGen();
+	const adjUuid = uuidGen();
+	const fmtUuid = uuidGen();
+
+	const actions: PlistDict[] = [
+		// Placeholder text action — iOS prompts to replace WFTextActionText on
+		// import (see WFWorkflowImportQuestions below). Its output is the magic
+		// variable the headers dict references instead of a literal key string.
+		act("is.workflow.actions.gettext", {
+			UUID: keyTextUuid,
+			WFTextActionText: tokenString([INGEST_KEY_PLACEHOLDER]),
+		}),
+		act("is.workflow.actions.repeat.count", {
+			GroupingIdentifier: loopGroup,
+			WFControlFlowMode: 0,
+			WFRepeatCount: 3,
+		}),
+		act("is.workflow.actions.adjustdate", {
+			UUID: adjUuid,
+			WFDate: tokenString([attachment({ Type: "CurrentDate" })]),
+			WFAdjustOperation: "Subtract",
+			WFDuration: {
+				Value: { Magnitude: { Type: "Variable", VariableName: "Repeat Index" }, Unit: "days" },
+				WFSerializationType: "WFQuantityFieldValue",
+			},
+		}),
+		act("is.workflow.actions.format.date", {
+			UUID: fmtUuid,
+			WFDate: tokenString([attachment(actionOutput(adjUuid, "Adjusted Date"))]),
+			WFDateFormatStyle: "Custom",
+			WFDateFormat: "yyyy-MM-dd",
+		}),
+	];
+	const keyActionIndex = 0;
+
+	const parts: Array<string | PlistDict> = ['{"entries": ['];
+	const statUuids: string[] = [];
+	for (const [label, , , stat] of METRICS) {
+		const findUuid = uuidGen();
+		const statUuid = uuidGen();
+		actions.push(
+			act("is.workflow.actions.filter.health.quantity", {
+				UUID: findUuid,
+				WFContentItemFilter: healthFilter(label, adjUuid),
+			}),
+		);
+		actions.push(
+			act("is.workflow.actions.statistics", {
+				UUID: statUuid,
+				Input: attachment(actionOutput(findUuid, "Health Samples")),
+				WFStatisticsOperation: stat,
+			}),
+		);
+		statUuids.push(statUuid);
+	}
+
+	let first = true;
+	METRICS.forEach(([, metric, unit, stat], i) => {
+		const statUuid = statUuids[i];
+		if (!first) parts.push(", ");
+		first = false;
+		parts.push(
+			'{"date": "',
+			attachment(actionOutput(fmtUuid, "Formatted Date")),
+			'", "metric": "',
+			metric,
+			'", "value": "',
+			attachment(actionOutput(statUuid, stat)),
+			'", "unit": "',
+			unit,
+			'", "source": "shortcut"}',
+		);
+	});
+	parts.push("]}");
+
+	const bodyUuid = uuidGen();
+	const postUuid = uuidGen();
+	actions.push(
+		act("is.workflow.actions.gettext", {
+			UUID: bodyUuid,
+			WFTextActionText: tokenString(parts),
+		}),
+	);
+	actions.push(
+		act("is.workflow.actions.downloadurl", {
+			UUID: postUuid,
+			Advanced: true,
+			ShowHeaders: true,
+			WFURL: INGEST_URL_PLACEHOLDER,
+			WFHTTPMethod: "POST",
+			WFHTTPBodyType: "File",
+			WFRequestVariable: attachment(actionOutput(bodyUuid, "Text")),
+			WFHTTPHeaders: {
+				Value: {
+					WFDictionaryFieldValueItems: [
+						{
+							WFItemType: 0,
+							WFKey: tokenString(["X-Api-Key"]),
+							// The key never appears as a literal in this signed file —
+							// it's a magic-variable reference to the Text action above.
+							WFValue: tokenString([attachment(actionOutput(keyTextUuid, "Text"))]),
+						},
+						{ WFItemType: 0, WFKey: tokenString(["Content-Type"]), WFValue: tokenString(["application/json"]) },
+					],
+				},
+				WFSerializationType: "WFDictionaryFieldValue",
+			},
+		}),
+	);
+	const downloadActionIndex = actions.length - 1;
+	actions.push(
+		act("is.workflow.actions.showresult", {
+			UUID: uuidGen(),
+			Text: tokenString([attachment(actionOutput(postUuid, "Contents of URL"))]),
+		}),
+	);
+	actions.push(
+		act("is.workflow.actions.repeat.count", {
+			UUID: uuidGen(),
+			GroupingIdentifier: loopGroup,
+			WFControlFlowMode: 2,
+		}),
+	);
+
+	const importQuestions: PlistDict[] = [
+		{
+			ActionIndex: keyActionIndex,
+			Category: "Parameter",
+			ParameterKey: "WFTextActionText",
+			Text: "Paste your ingest key (from the setup page)",
+		},
+		{
+			ActionIndex: downloadActionIndex,
+			Category: "Parameter",
+			ParameterKey: "WFURL",
+			Text: "Paste your ingest URL",
+		},
+	];
+
+	return {
+		WFWorkflowActions: actions,
+		WFWorkflowClientVersion: "4610.1",
+		WFWorkflowMinimumClientVersion: 900,
+		WFWorkflowMinimumClientVersionString: "900",
+		WFWorkflowIcon: { WFWorkflowIconGlyphNumber: 61440, WFWorkflowIconStartColor: -43634177 },
+		WFWorkflowName: "Sync Health Data",
+		WFWorkflowImportQuestions: importQuestions,
+		WFWorkflowTypes: [],
+		WFQuickActionSurfaces: [],
+		WFWorkflowInputContentItemClasses: [],
+		WFWorkflowOutputContentItemClasses: [],
+		WFWorkflowHasOutputFallback: false,
+		WFWorkflowHasShortcutInputVariables: false,
+	};
+}
+
 const PLIST_HEADER =
 	'<?xml version="1.0" encoding="UTF-8"?>\n' +
 	'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n';
@@ -333,4 +523,15 @@ export function serializePlist(value: PlistDict): Uint8Array<ArrayBuffer> {
 export function buildShortcut(ingestUrl: string, ingestKey: string): Uint8Array<ArrayBuffer> {
 	const uuidGen = (): string => crypto.randomUUID().toUpperCase();
 	return serializePlist(buildWorkflow(ingestUrl, ingestKey, uuidGen));
+}
+
+/** Builds the bytes of the canonical "Sync Health Data.shortcut" file — no
+ * user values baked in, placeholders + WFWorkflowImportQuestions instead.
+ * This is the file that gets signed once per release (`shortcuts sign -m
+ * anyone`) and shipped as web/assets/sync-health-data-signed.shortcut; every
+ * user downloads the same signed bytes and iOS prompts them for their own
+ * URL/key on import. See scripts/build-canonical-shortcut.mjs. */
+export function buildCanonicalShortcut(): Uint8Array<ArrayBuffer> {
+	const uuidGen = (): string => crypto.randomUUID().toUpperCase();
+	return serializePlist(buildCanonicalWorkflow(uuidGen));
 }

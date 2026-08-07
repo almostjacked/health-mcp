@@ -8,6 +8,7 @@
     "release": "changeset publish || node scripts/verify-published.mjs",
     "version-packages": "changeset version",
     "bundle:functions": "node scripts/bundle-functions.mjs",
+    "build:shortcut": "node scripts/build-canonical-shortcut.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

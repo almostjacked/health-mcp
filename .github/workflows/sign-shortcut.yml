@@ -1,0 +1,63 @@
+name: Sign Canonical Shortcut
+
+# Signs ONE canonical "Sync Health Data" shortcut (no per-user values —
+# see web/src/shortcut/plist.ts's buildCanonicalShortcut) and commits the
+# signed asset back to main. iOS refuses unsigned shortcut imports
+# (verified on-device); `shortcuts sign -m anyone` is the fix, but that CLI
+# only exists on macOS, so this can't run on the ubuntu runner the rest of
+# CI uses.
+#
+# Triggered on pushes that touch the action-graph source (so a shortcut
+# change gets re-signed automatically) and manually via workflow_dispatch.
+# The push-path filter targets web/src/shortcut/** only — the commit this
+# workflow makes touches web/assets/**, which is NOT in that filter, so it
+# can't re-trigger itself. Deliberately no "[skip ci]" in the commit
+# message: CI and the Pages workflow should still run on the resulting
+# commit (Pages needs to redeploy with the new signed asset).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "web/src/shortcut/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sign-shortcut
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # reads packageManager (pnpm) from package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build:shortcut
+
+      - name: Sign with shortcuts CLI
+        run: |
+          mkdir -p web/assets
+          shortcuts sign -m anyone -i build/sync-health-data.shortcut -o web/assets/sync-health-data-signed.shortcut
+
+      - name: Commit signed asset
+        run: |
+          git config user.name "sign-bot"
+          git config user.email "sign-bot@users.noreply.github.com"
+          git add web/assets/sync-health-data-signed.shortcut
+          if git diff --cached --quiet; then
+            echo "no change to the signed asset — nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore: sign canonical shortcut [sign-bot]"
+          git push
