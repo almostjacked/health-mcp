@@ -1,5 +1,11 @@
 # @almostjacked/health-mcp
 
+## 0.1.2
+
+### Patch Changes
+
+- 3f71d66: Setup wizard and page advise storing the connector URL and keys in a password manager (values are not recoverable later — rotation only).
+
 ## 0.1.1
 
 ### Patch Changes
