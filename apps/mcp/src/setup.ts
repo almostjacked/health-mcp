@@ -430,7 +430,9 @@ function printResults(ref: string, mcpToken: string, ingestKey: string): void {
       "Ingest endpoint (for the Apple Shortcut, or any HTTP client writing data):\n" +
       `  URL: ${ingest}\n` +
       `  Key: ${ingestKey}\n` +
-      '  (send the key as the "X-Api-Key" header — store it safely, it will not be printed again)\n\n' +
+      '  (send the key as the "X-Api-Key" header — it will not be printed again)\n\n' +
+      'Store the connector URL and both keys in a password manager: the URL embeds your\n' +
+      'MCP token, and secret values cannot be read back from Supabase later.\n\n' +
       "If any step above printed a manual fallback, finish it in the Supabase dashboard\n" +
       `(https://supabase.com/dashboard/project/${ref}) before continuing.\n\n` +
       "Next steps:\n" +

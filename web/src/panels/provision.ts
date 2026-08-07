@@ -182,6 +182,10 @@ function renderManualStep(step: ManualStep, wiring: ConnectorWiring): HTMLLIElem
 			]),
 			el("div", { class: "secret-row" }, [el("span", { class: "secret-label" }, ["MCP_TOKEN"]), mcpOut, mcpCopy]),
 			el("div", { class: "secret-row" }, [el("span", { class: "secret-label" }, ["INGEST_KEY"]), ingestOut, ingestCopy]),
+			el("p", { class: "note" }, [
+				el("strong", {}, ["Store these in a password manager."]),
+				" The connector URL embeds your MCP token (treat the whole URL as a secret), and secret values cannot be read back from Supabase later — losing them means rotating them.",
+			]),
 		);
 		return el("li", { class: "manual-step" }, body);
 	}

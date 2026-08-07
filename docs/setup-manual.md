@@ -121,6 +121,10 @@ works; do it and everything works immediately. After that:
 [set up the Shortcut](shortcut.md) for the daily sync, then connect Claude.
 
 
+> **Store your connector URL and keys securely** — a password manager is the
+> right home. The connector URL embeds your `MCP_TOKEN` (treat the whole URL as
+> a secret), and key values cannot be read back later (see below).
+
 ## Lost your keys?
 
 The ingest URL is never secret — it is always
