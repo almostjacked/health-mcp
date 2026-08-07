@@ -153,9 +153,9 @@ describe("buildCanonicalWorkflow / buildCanonicalShortcut (signed-once, Import Q
 		expect(text).toContain("<key>WFWorkflowImportQuestions</key>");
 	});
 
-	it("uses a fresh random UUID sequence on every call", () => {
+	it("is byte-deterministic across calls (the CI drift guard depends on this)", () => {
 		const a = new TextDecoder().decode(buildCanonicalShortcut());
 		const b = new TextDecoder().decode(buildCanonicalShortcut());
-		expect(a).not.toBe(b);
+		expect(a).toBe(b);
 	});
 });

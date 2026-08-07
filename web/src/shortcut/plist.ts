@@ -532,6 +532,12 @@ export function buildShortcut(ingestUrl: string, ingestKey: string): Uint8Array<
  * user downloads the same signed bytes and iOS prompts them for their own
  * URL/key on import. See scripts/build-canonical-shortcut.mjs. */
 export function buildCanonicalShortcut(): Uint8Array<ArrayBuffer> {
-	const uuidGen = (): string => crypto.randomUUID().toUpperCase();
+	// DETERMINISTIC on purpose: the canonical file is a single public artifact,
+	// and byte-stable builds are what let CI verify the committed signed asset
+	// was minted from the current source (web/assets/canonical.sha256 guard).
+	// Fixed UUIDs are harmless here — uniqueness only matters within the file.
+	let n = 0;
+	const uuidGen = (): string =>
+		`00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
 	return serializePlist(buildCanonicalWorkflow(uuidGen));
 }
