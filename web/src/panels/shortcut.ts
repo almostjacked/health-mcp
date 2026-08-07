@@ -34,9 +34,17 @@ function el<K extends keyof HTMLElementTagNameMap>(
 function installSteps(): HTMLOListElement {
 	return el("ol", { class: "install-steps" }, [
 		el("li", {}, [
-			"Get the downloaded ",
-			el("code", {}, [SHORTCUT_FILE_NAME]),
-			" onto your iPhone — AirDrop from a Mac, or upload it somewhere and open the link in Safari on the phone.",
+			el("strong", {}, ["Sign the file (required — iOS refuses unsigned shortcuts). "]),
+			"On a Mac, in Terminal:",
+			el("pre", { class: "code-block" }, [
+				el("code", {}, ["shortcuts sign -m anyone -i sync-health-data.shortcut -o sync-health-data-signed.shortcut"]),
+			]),
+			"(No Mac? Signing needs one — borrow a friend's for this single command; the signed file works forever.)",
+		]),
+		el("li", {}, [
+			"Get the ",
+			el("code", {}, ["signed"]),
+			" file onto your iPhone — AirDrop from the Mac, or upload it somewhere and open the link in Safari on the phone.",
 		]),
 		el("li", {}, ["Opening it launches the Shortcuts app's import screen. Tap ", el("strong", {}, ["Add Shortcut"]), "."]),
 		el("li", {}, [
